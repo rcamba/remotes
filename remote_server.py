@@ -13,11 +13,12 @@ import select
 import ConfigParser
 import hashlib
 import uuid
+import string
 
 currDir = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 DEFAULT_CURR_DIR = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 
-HOST = socket.gethostbyname("localhost")# socket.gethostname()
+HOST = socket.gethostbyname("localhost")  # socket.gethostname()
 PORT = 9988
 
 
@@ -30,37 +31,14 @@ class DuplicateUserError(Exception):
 
 
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
-
     def __init__(self, request, client_address, server_):
         self.conf_parser = ConfigParser.RawConfigParser()
         self.config_file = "server_data"
         self.conf_parser.read(self.config_file)
-        self.timeout = 10
+        self.timeout = 10  # overrides parent
         self.data_rate = 32768
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
-
-    def create_new_user(self):
-        try:
-            new_user, new_password = self.receive_message().split(',', 1)
-        except ValueError:
-            raise
-
-        try:
-            self.conf_parser.add_section(new_user)
-        except ConfigParser.DuplicateSectionError:
-            raise DuplicateUserError("User {} already exists".format(new_user))
-
-        new_salt = uuid.uuid4().hex
-        new_hash = hashlib.sha512(new_password + new_salt).hexdigest()
-
-        self.conf_parser.set(new_user, "hash", new_hash)
-        self.conf_parser.set(new_user, "salt", new_salt)
-
-        with open(self.config_file, 'wb') as cff:
-                self.conf_parser.write(cff)
-
-        self.send_msg("Created new user: " + new_user)
 
     def authenticate(self):
         print "Authenticating client:", (self.client_address)
@@ -119,6 +97,47 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             self.request.send("Invalid operation")
 
         self.finish()
+
+    def create_new_user(self):
+        try:
+            new_user, new_password = self.receive_message().split(' ', 1)
+        except ValueError:
+            raise
+
+        if any(c for c in new_user
+               if c not in string.ascii_letters and
+                c not in string.digits):
+            msg = ("Invalid user: {}. " +
+                   "Only letters and numbers are allowed.").format(new_user)
+            self.send_msg(msg)
+            raise InvalidCredentialsError(msg)
+
+        if any(c for c in new_password
+               if c in string.whitespace):
+            msg = "Invalid password: {}. No whitespace allowed.".format(
+                new_password)
+            self.send_msg(msg)
+            raise InvalidCredentialsError(msg)
+
+        try:
+            self.conf_parser.add_section(new_user)
+
+        except ConfigParser.DuplicateSectionError:
+            msg = "User {} already exists".format(new_user)
+            self.send_msg(msg)
+            raise DuplicateUserError(msg)
+
+        new_salt = uuid.uuid4().hex
+        new_hash = hashlib.sha512(new_password + new_salt).hexdigest()
+
+        self.conf_parser.set(new_user, "hash", new_hash)
+        self.conf_parser.set(new_user, "salt", new_salt)
+
+        with open(self.config_file, 'wb') as cff:
+            self.conf_parser.write(cff)
+
+        self.send_msg("Created new user: " + new_user)
+
     """
     def __retrieveFileList__(self):
         fList = getList("file")
@@ -247,6 +266,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
 
+
 """
 def getList(targ):
 
@@ -273,12 +293,9 @@ def getList(targ):
     return fList
 """
 
-
 if __name__ == "__main__":
-
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
 
     print "Server running on:" + socket.gethostbyname(HOST)
     server.serve_forever()
     server.server_close()
-
