@@ -1,20 +1,12 @@
 import socket
-from sys import argv
+import sys
 import os
 import pickle
 import json
-# from root import switchBoard, printNumberedList, chooseFromNumberedList,
-# errorAlert, drawLoadingBar
 from time import time, sleep
 
 
-TARGET_HOST = socket.gethostbyname("SMLaptop")
-
-PORT = 9988
-AVAILABLE_SWITCHES = ['a', 's', 'c', 'r', 'g', 'gat', 'cm', 'ffo', 'o']
-DATA_RATE = 32768
-
-
+"""
 def sendReq(sock, fileToRetrieve):
 
     try:
@@ -67,13 +59,6 @@ def createSockets(n):
         exec("socketList.append(" + "socket_" + str(i) + ")")
 
     return socketList
-
-
-def initSocketConnection():
-    mainSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print "Connecting to: ", TARGET_HOST, "on PORT: ", PORT
-    mainSock.connect((TARGET_HOST, PORT))
-    return mainSock
 
 
 def encodeUniEscape(targ):
@@ -152,9 +137,9 @@ def changeRemoteDirectory(mainSock, switches):
 def sendFile(mainSock, switches, file):
     print "Sending ", file
     mainSock.send("sendFile" + "\n")
-    mainSock.send(argv[1] + "\n")
+    mainSock.send(sys.argv[1] + "\n")
 
-    fileSize = os.path.getsize(argv[1])
+    fileSize = os.path.getsize(sys.argv[1])
     print str(fileSize / 1048576) + " MB"
     mainSock.send(str(fileSize) + "\n")
 
@@ -177,60 +162,75 @@ def sendFile(mainSock, switches, file):
 
     f.close()
     print "File sent"
+"""
+
+
+class RemoteClient:
+
+    def __init__(self):
+        self.target_host = socket.gethostbyname("localhost")
+        self.port = 9988
+        self.socket = self.init_socket_connection()
+
+        self.data_rate = 32768
+        self.timeout = 10 # seconds
+        self.socket.settimeout(self.timeout)
+
+        self.password = "abcdef"
+        self.authenticate()
+
+    def init_socket_connection(self):
+
+        main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print "Connecting to: {} on PORT: {}".format(self.target_host,
+                                                     self.port)
+        main_sock.connect((self.target_host, self.port))
+        return main_sock
+
+    def authenticate(self):
+        self.send_msg(self.password)
+
+    def send_msg(self, msg):
+        self.socket.send(msg + "\n")
+
+    def receive_msg(self):
+        return self.socket.recv(self.data_rate)
+
+    def close_connection(self):
+        self.socket.close()
+
+
+def main():
+
+    rc = RemoteClient()
+
+    switches = map(lambda x: x.replace("-", ""), sys.argv[1:])
+
+    if "rc" in switches:
+        operation = "run_command"
+        command = sys.argv[2]
+        command_args = " ".join(sys.argv[3:])
+
+        rc.send_msg(operation)
+        rc.send_msg(command)
+        rc.send_msg(command_args)
+
+    elif "shutdown" in switches:
+        operation = "shutdown"
+        rc.send_msg(operation)
+
+    elif "nu" in switches:
+        operation = "create_new_user"
+        new_user = sys.argv[2]
+        new_password = sys.argv[3]
+        msg = new_user + "," + new_password
+
+        rc.send_msg(operation)
+        rc.send_msg(msg)
+
+    print rc.receive_msg()
+    rc.close_connection()
+
 
 if __name__ == "__main__":
-
-    mainSock = initSocketConnection()
-    switches = switchBoard(argv)
-
-    if(len(switches) > 0):
-
-        if('a' in switches or 'g' in switches):
-            """
-            a: retrieve all files
-            g: select file(s) to retrieve
-            """
-            getFiles(mainSock, switches)
-
-        elif ('c' in switches or 'cm' in switches):
-            changeRemoteDirectory(mainSock, switches)
-
-        elif('s' in switches):
-            try:
-                file = argv[1]
-            except IndexError:
-                print "ERROR: Missing filename to send. Exiting program."
-                exit(1)
-
-            sendFile(mainSock, switches, file)
-
-        elif ('gat' in switches):
-            print "Running getAnimeTorrents.py"
-            mainSock.send("runComm" + "\n")
-            mainSock.send(
-                "C:\\Users\\Kevin\\Util\\resources\\getAnimeTorrents.py" +
-                "\n")
-            mainSock.send("" + "\n")
-            print "Operation output:\n", mainSock.recv(DATA_RATE)
-
-        elif('ffo' in switches):
-
-            argv[1] = argv[1][argv[1].index("www"):]
-            print "Opening link in firefox:", argv[1]
-            mainSock.send("sysCall" + "\n")
-            mainSock.send("firefox -new-tab " + "\"" + argv[1] + "\"" + "\n")
-
-        elif('o' in switches):
-            command = " ".join(map(str, argv[1:]))
-            print argv
-            print "Running command " + command
-            mainSock.send("sysCall" + "\n")
-
-            mainSock.send(command + "\n")
-            # mainSock.send("firefox"+"\n")
-            # argv[1]=argv[1][ argv[1].index("www") : ]
-            # mainSock.send("firefox -new-tab "+ "\""+argv[1] +"\"" +"\n")
-
-            print mainSock.recv(DATA_RATE)
-
-    mainSock.close()
+    main()

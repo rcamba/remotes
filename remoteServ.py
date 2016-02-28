@@ -7,33 +7,91 @@ import json
 import time
 import shutil
 import subprocess
-from root import drawLoadingBar
+import thread
+import errno
+import select
+import ConfigParser
+import hashlib
+import uuid
 
 currDir = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 DEFAULT_CURR_DIR = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 
-HOST = socket.gethostname()
+HOST = socket.gethostbyname("localhost")# socket.gethostname()
 PORT = 9988
 
-DATA_RATE = 32768
-VALID_IPS = [socket.gethostbyname("MainDesktop")]
 
-
-def validateIP(ipaddr):
-    if(ipaddr not in VALID_IPS):
-        print "Invalid IP ", ipaddr
-        exit(1)
-    else:
-        print "Valid IP"
+class InvalidCredentialsError(Exception):
+    pass
 
 
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
+    def __init__(self, request, client_address, server_):
+        self.conf_parser = ConfigParser.RawConfigParser()
+        self.config_file = "server_data"
+        self.conf_parser.read(self.config_file)
+        self.timeout = 10
+        self.data_rate = 32768
+        SocketServer.StreamRequestHandler.__init__(self, request,
+                                                   client_address, server_)
+
+    def create_new_user(self):
+        try:
+            new_user, new_password = self.receive_message().split(',', 1)
+        except ValueError:
+            raise
+
+        new_salt = uuid.uuid4().hex
+        new_hash = hashlib.sha512(new_password + new_salt).hexdigest()
+        self.conf_parser.add_section(new_user)
+        self.conf_parser.set(new_user, "hash", new_hash)
+        self.conf_parser.set(new_user, "salt", new_salt)
+
+        with open(self.config_file, 'wb') as cff:
+                self.conf_parser.write(cff)
+
+        self.send_msg("Created new user: " + new_user)
+
+    def authenticate(self):
+        print "Authenticating client:", (self.client_address)
+        msg = self.receive_message()
+        user = socket.gethostbyaddr(self.client_address[0])[0]
+
+        try:
+            hash_ = self.conf_parser.get(user, "hash")
+            salt = self.conf_parser.get(user, "salt")
+        except ConfigParser.NoSectionError:
+            raise InvalidCredentialsError(
+                "Unable to find credentials")
+
+        if hashlib.sha512(msg + salt).hexdigest() != hash_:
+            raise InvalidCredentialsError(
+                "Invalid credentials")
+
+        print "Authenticated:        ", self.client_address
+
+    def receive_message(self):
+        return self.rfile.readline().replace("\n", "")
+
+    def send_msg(self, msg):
+        self.wfile.write(msg.encode('utf-8').strip())
+
     def handle(self):
 
-        operation = self.rfile.readline().replace("\n", "")
+        self.authenticate()
+        operation = self.receive_message()
 
-        if operation == "retrieveFileList":
+        if operation == "shutdown":
+            msg = "Shutting down server"
+            self.send_msg(msg)
+            print msg
+            thread.start_new_thread(server.shutdown, ())
+
+        elif operation == "create_new_user":
+            self.create_new_user()
+
+        elif operation == "retrieveFileList":
             self.__retrieveFileList__()
 
         elif operation == "getFile":
@@ -45,14 +103,14 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         elif operation == "changeDir":
             self.__changeDir__()
 
-        elif operation == "runComm":
-            self.__runCommand__()
+        elif operation == "run_command":
+            self.run_command()
 
-        elif operation == "sysCall":
-            self.__directSysCall__()
         else:
-            self.wfile.write("Invalid operation")
+            self.request.send("Invalid operation")
 
+        self.finish()
+    """
     def __retrieveFileList__(self):
         fList = getList("file")
 
@@ -149,44 +207,38 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         print "\n"
 
         f.close()
+    """
 
-    def __runCommand__(self):
-        print "Running command"
+    def run_command(self):
+        command = self.receive_message()
+        print "Running command:", command
 
-        command = self.rfile.readline().replace("\n", "")
-        print "Command: ", command
+        command_args = self.receive_message()
+        print "Command arguments:", command_args
 
-        commandArgs = self.rfile.readline().replace("\n", "")
-        print "Command arguments: ", commandArgs
-        # os.system(command)
-
-        if len(commandArgs) == 0:
+        if len(command_args) == 0:
             proc = subprocess.Popen(
-                [command], stdout=subprocess.PIPE, shell=True)
-            (out, err) = proc.communicate()
+                [command], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=True)
+            out, err = proc.communicate()
         else:
             proc = subprocess.Popen(
-                [command, commandArgs], stdout=subprocess.PIPE, shell=True)
-            (out, err) = proc.communicate()
+                [command, command_args], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=True)
+            out, err = proc.communicate()
 
-        # send result of command
+        if err is not None and len(err) > 0:
+            self.send_msg(err)
+        else:
+            self.send_msg(out)
 
-        self.wfile.write(out.encode('utf-8'))
         print "Finished running command"
-        # print "out ", out
-        # print "err" , err
-
-    def __directSysCall__(self):
-        print "Syscall"
-        command = self.rfile.readline().replace("\n", "")
-        print "Command: ", command
-        os.system(command)
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
 
-
+"""
 def getList(targ):
 
     fList = os.listdir(unicode(currDir))
@@ -210,20 +262,14 @@ def getList(targ):
     fList.sort()
 
     return fList
+"""
 
 
 if __name__ == "__main__":
 
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
-    print "Server running on:  " + socket.gethostbyname(HOST)
-    print "V: 03"
-    # Start a thread with the server -- that thread will then start one
-    # more thread for each request
-    server_thread = threading.Thread(target=server.serve_forever)
-    # Exit the server thread when the main thread terminates
-    server_thread.daemon = True
-    server_thread.start()
-    print "Server loop running in thread:", server_thread.name
 
+    print "Server running on:" + socket.gethostbyname(HOST)
     server.serve_forever()
-    # add reset server command ? server.shutdown() and then server.start() ?
+    server.server_close()
+
