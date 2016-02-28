@@ -25,6 +25,10 @@ class InvalidCredentialsError(Exception):
     pass
 
 
+class DuplicateUserError(Exception):
+    pass
+
+
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
     def __init__(self, request, client_address, server_):
@@ -42,9 +46,14 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         except ValueError:
             raise
 
+        try:
+            self.conf_parser.add_section(new_user)
+        except ConfigParser.DuplicateSectionError:
+            raise DuplicateUserError("User {} already exists".format(new_user))
+
         new_salt = uuid.uuid4().hex
         new_hash = hashlib.sha512(new_password + new_salt).hexdigest()
-        self.conf_parser.add_section(new_user)
+
         self.conf_parser.set(new_user, "hash", new_hash)
         self.conf_parser.set(new_user, "salt", new_salt)
 
