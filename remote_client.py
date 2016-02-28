@@ -222,8 +222,8 @@ def main():
     elif "nu" in switches:
         operation = "create_new_user"
         new_user = sys.argv[2]
-        new_password = sys.argv[3]
-        msg = new_user + "," + new_password
+        new_password = " ".join(sys.argv[3:])
+        msg = new_user + " " + new_password
 
         rc.send_msg(operation)
         rc.send_msg(msg)
