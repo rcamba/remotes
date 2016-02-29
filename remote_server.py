@@ -14,9 +14,10 @@ import ConfigParser
 import hashlib
 import uuid
 import string
+import random
+import struct
 
 currDir = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
-DEFAULT_CURR_DIR = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 
 HOST = socket.gethostbyname("localhost")  # socket.gethostname()
 PORT = 9988
@@ -36,13 +37,18 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.config_file = "server_data"
         self.conf_parser.read(self.config_file)
         self.timeout = 10  # overrides parent
+
+        self.struct_size = 8 # >Q
+        self.struct_fmt = ">Q"
+
         self.data_rate = 32768
+        self.default_dir = self.conf_parser.get("Settings", "default_dir")
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
 
     def authenticate(self):
         print "Authenticating client:", (self.client_address)
-        msg = self.receive_message()
+        msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
 
         try:
@@ -58,16 +64,38 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         print "Authenticated:        ", self.client_address
 
-    def receive_message(self):
-        return self.rfile.readline().replace("\n", "")
+    def update_settings(self, targ_setting, new_value):
+        self.conf_parser.add_section("Settings")
+        self.conf_parser.set("Settings", targ_setting, new_value)
+        with open(self.config_file, 'wb') as cff:
+            self.conf_parser.write(cff)
 
+    # modified https://stackoverflow.com/questions/17667903/17668009#17668009
     def send_msg(self, msg):
-        self.wfile.write(msg.encode('utf-8').strip())
+        msg = struct.pack(self.struct_fmt, len(msg)) + msg
+        self.request.sendall(msg)
+
+    def receive_msg(self):
+        raw_msglen = self.recvall(self.struct_size)
+        if not raw_msglen:
+            raise ValueError("Message has no length")
+        msglen = struct.unpack(self.struct_fmt, raw_msglen)[0]
+        return self.recvall(msglen)
+
+    def recvall(self, n):
+        data = ""
+        while len(data) < n:
+            packet = self.request.recv(n - len(data))
+            if not packet:
+                data = None
+                break
+            data += packet
+        return data
 
     def handle(self):
 
         self.authenticate()
-        operation = self.receive_message()
+        operation = self.receive_msg()
 
         if operation == "shutdown":
             msg = "Shutting down server"
@@ -78,8 +106,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         elif operation == "create_new_user":
             self.create_new_user()
 
-        elif operation == "retrieveFileList":
-            self.__retrieveFileList__()
+        elif operation == "get_files":
+            self.get_files()
 
         elif operation == "getFile":
             self.__getFile__()
@@ -100,7 +128,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
     def create_new_user(self):
         try:
-            new_user, new_password = self.receive_message().split(' ', 1)
+            new_user, new_password = self.receive_msg().split(' ', 1)
         except ValueError:
             raise
 
@@ -137,6 +165,46 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             self.conf_parser.write(cff)
 
         self.send_msg("Created new user: " + new_user)
+
+    def get_files_list(self):
+        f_list = os.listdir(unicode(self.default_dir))
+        f_list = map(lambda f: os.path.join(self.default_dir, f), f_list)
+        f_list = [os.path.split(f)[1] for f in f_list if os.path.isfile(f)]
+        f_list.sort()
+        return f_list
+
+    def get_files(self):
+
+        print "Sending file list"
+        f_list = self.get_files_list()
+
+        self.send_msg(json.dumps(f_list))
+
+        choices = json.loads(self.receive_msg())
+        print choices
+
+        f_list = map(lambda f: os.path.join(self.default_dir, f), f_list)
+
+        for choice in choices:
+
+            f = f_list[int(choice) - 1]
+            filesize = int(os.path.getsize(f))
+            print "Sending :", f
+            print "Filesize:", filesize
+
+            self.send_msg(json.dumps((f, filesize)))
+
+            with open(f, "rb") as reader:
+                data = reader.read(self.data_rate)
+                data_sent = len(data)
+
+                self.send_msg(data)
+                while data_sent < filesize:
+                    data = reader.read(self.data_rate)
+                    data_sent += len(data)
+                    self.send_msg(data)
+
+        self.send_msg("Finished operation get_file")
 
     """
     def __retrieveFileList__(self):
@@ -238,10 +306,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
     """
 
     def run_command(self):
-        command = self.receive_message()
+        command = self.receive_msg()
         print "Running command:", command
 
-        command_args = self.receive_message()
+        command_args = self.receive_msg()
         print "Command arguments:", command_args
 
         if len(command_args) == 0:
@@ -295,6 +363,8 @@ def getList(targ):
 
 if __name__ == "__main__":
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+
+    server
 
     print "Server running on:" + socket.gethostbyname(HOST)
     server.serve_forever()
