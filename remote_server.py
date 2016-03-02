@@ -179,18 +179,18 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         self.send_msg(json.dumps(f_list))
 
-        choices = json.loads(self.receive_msg())
+        filename_choices = json.loads(self.receive_msg())
 
-        f_list = map(lambda f: os.path.join(self.default_dir, f), f_list)
+        f_list = map(lambda f: os.path.join(self.default_dir, f),
+                     filename_choices)
 
-        for choice in choices:
+        for f in f_list:
 
-            f = f_list[int(choice) - 1]
             filesize = int(os.path.getsize(f))
             print "Sending :", f
             print "Filesize: {} bytes\n".format(filesize)
 
-            self.send_msg(json.dumps((f, filesize)))
+            self.send_msg(json.dumps((os.path.split(f)[1], filesize)))
             hash_func = hashlib.sha512()
             data_sent = 0
             with open(f, "rb") as reader:
@@ -204,7 +204,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
                 self.send_msg(checksum)
 
         self.send_msg("Finished operation get_file")
-
 
     """
     def __retrieveFileList__(self):
@@ -363,8 +362,6 @@ def getList(targ):
 
 if __name__ == "__main__":
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
-
-    server
 
     print "Server running on:" + socket.gethostbyname(HOST)
     server.serve_forever()

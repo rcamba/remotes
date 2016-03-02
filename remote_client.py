@@ -9,28 +9,6 @@ import struct
 
 
 """
-def encodeUniEscape(targ):
-    return targ.encode('unicode_escape')
-
-
-def createPrintableList(targList):
-    return map(encodeUniEscape, targList)
-
-
-def pullFiles(chosenFiles):
-    startTime = time()
-    totalFileSize = 0
-
-    socketList = createSockets(len(chosenFiles))
-    for i in range(0, len(socketList)):
-        totalFileSize = totalFileSize + sendReq(socketList[i], chosenFiles[i])
-        sleep(1)
-
-    print totalFileSize, " MB"
-    totalTime = time() - startTime
-    print totalTime, " seconds", "( ", totalTime / 60.0, " minutes ) "
-    print (totalFileSize / 1.0) / (time() - startTime), " MB/s"
-
 def changeRemoteDirectory(mainSock, switches):
     mainSock.send("changeDir" + "\n")
     currDir, dirList = pickle.loads(mainSock.recv(DATA_RATE))
@@ -79,6 +57,10 @@ def sendFile(mainSock, switches, file):
 """
 
 
+class MaxTriesExceededError(Exception):
+    pass
+
+
 class RemoteClient:
 
     def __init__(self):
@@ -86,7 +68,7 @@ class RemoteClient:
         self.port = 9988
         self.socket = self.init_socket_connection()
 
-        # self.data_rate = 32768
+        self.max_get_files_tries = 3
         self.data_rate = 32768
         self.struct_size = 8 # >Q
         self.struct_fmt = ">Q"
@@ -154,36 +136,50 @@ def run_command(client):
     client.send_msg(command_args)
 
 
-def get_files(client):
+def create_file(client):
+    filename, filesize = json.loads(client.receive_msg())
+    print "Creating:", filename
+    print "Filesize: {} bytes".format(filesize)
+    hash_func = hashlib.sha512()
+    with open(filename, "wb") as writer:
+        data_received = 0
+        while data_received < filesize:
+            data = client.receive_msg()
+            data_received += len(data)
+            hash_func.update(data)
+            writer.write(data)
+
+    return hash_func.hexdigest()
+
+
+def get_files(client, filename_choices=[], tries=0):
     operation = "get_files"
     client.send_msg(operation)
 
     f_list = json.loads(client.receive_msg())
-    print_list(f_list)
-    choices = raw_input(
-        "Enter number of file(s) separated by commas\n").split(',')
 
-    client.send_msg(json.dumps(choices))
+    if len(filename_choices) == 0:
+        print_list(f_list)
+        choices = raw_input(
+            "Enter number of file(s) separated by commas\n").split(',')
+        filename_choices = map(lambda n: f_list[int(n)-1], choices)
 
-    for c in range(0, len(choices)):
-        filename, filesize = json.loads(client.receive_msg())
-        filename = os.path.split(filename)[1]
-        print "Creating:", filename
-        print "Filesize: {} bytes".format(filesize)
-        hash_func = hashlib.sha512()
-        with open(filename, "wb") as writer:
-            data_received = 0
-            while data_received < filesize:
-                data = client.receive_msg()
-                data_received += len(data)
-                hash_func.update(data)
-                writer.write(data)
+    client.send_msg(json.dumps(filename_choices))
 
+    for f in filename_choices:
+        calculated_checksum = create_file(client)
         expected_checksum = client.receive_msg()
-        print "expected checksum  :", expected_checksum
-        print "calculated checksum:", hash_func.hexdigest()
-        if expected_checksum != hash_func.hexdigest():
-            pass  # retry
+        # print "Expected checksum  :", expected_checksum
+        # print "Calculated checksum:", calculated_checksum
+        if expected_checksum != calculated_checksum:
+            if tries > client.max_get_files_tries:
+                raise MaxTriesExceededError(
+                    "Tried to download {} and failed {} times.".format(
+                        f, client.max_get_files_tries))
+            else:
+                print "Checksums do not match retrying."
+                tries += 1
+                get_files(RemoteClient(), [f], tries)
 
 
 def create_new_user(client):
