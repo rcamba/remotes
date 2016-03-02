@@ -174,14 +174,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         return f_list
 
     def get_files(self):
-
         print "Sending file list"
         f_list = self.get_files_list()
 
         self.send_msg(json.dumps(f_list))
 
         choices = json.loads(self.receive_msg())
-        print choices
 
         f_list = map(lambda f: os.path.join(self.default_dir, f), f_list)
 
@@ -190,21 +188,23 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             f = f_list[int(choice) - 1]
             filesize = int(os.path.getsize(f))
             print "Sending :", f
-            print "Filesize:", filesize
+            print "Filesize: {} bytes\n".format(filesize)
 
             self.send_msg(json.dumps((f, filesize)))
-
+            hash_func = hashlib.sha512()
+            data_sent = 0
             with open(f, "rb") as reader:
-                data = reader.read(self.data_rate)
-                data_sent = len(data)
-
-                self.send_msg(data)
                 while data_sent < filesize:
                     data = reader.read(self.data_rate)
                     data_sent += len(data)
+                    hash_func.update(data)
                     self.send_msg(data)
 
+                checksum = hash_func.hexdigest()
+                self.send_msg(checksum)
+
         self.send_msg("Finished operation get_file")
+
 
     """
     def __retrieveFileList__(self):

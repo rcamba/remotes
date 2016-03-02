@@ -1,3 +1,4 @@
+import hashlib
 import socket
 import sys
 import os
@@ -8,91 +9,12 @@ import struct
 
 
 """
-def sendReq(sock, fileToRetrieve):
-
-    try:
-
-        # Connect to server and send data
-        sock.connect((TARGET_HOST, PORT))
-        sock.send("getFile" + "\n")
-        sock.send(fileToRetrieve .encode('utf-8') + "\n")
-
-        name = (sock.recv(DATA_RATE)).decode('utf-8')
-        print encodeUniEscape(name)
-
-        fileSize = int(sock.recv(DATA_RATE))
-        print str(fileSize / 1048576) + " MB"
-
-        f = open(name, 'wb')
-        data = sock.recv(DATA_RATE)
-
-        dataRecv = len(data)
-        f.write(data)
-
-        prevPct = 0
-        while(dataRecv < fileSize):
-
-            data = sock.recv(DATA_RATE)
-            dataRecv = dataRecv + len(data)
-            currPct = int((round(dataRecv / (fileSize * 1.0), 2)) * 100)
-            if currPct != prevPct:
-                drawLoadingBar(str(currPct) + "%")
-                prevPct = currPct
-
-            f.write(data)
-
-        print "\n"
-
-        f.close()
-
-    finally:
-        sock.close()
-
-    return (fileSize / 1048576.0)
-
-
-def createSockets(n):
-    socketList = []
-
-    for i in range(0, n):
-        exec("socket_" + str(i) + "=" +
-             "socket.socket(socket.AF_INET, socket.SOCK_STREAM)")
-        exec("socketList.append(" + "socket_" + str(i) + ")")
-
-    return socketList
-
-
 def encodeUniEscape(targ):
     return targ.encode('unicode_escape')
 
 
 def createPrintableList(targList):
     return map(encodeUniEscape, targList)
-
-
-def getChoices(fileList):
-
-    printNumberedList(createPrintableList(fileList))
-    choices = raw_input(
-        "Select the number of the file. Separate with commas: \n")
-    return choices.split(',')
-
-
-def getFilesToReceive(choiceList, switches):
-    if len(choiceList) > 0:
-        chosenFiles = []
-        if ('a' in switches):
-            chosenFiles = choiceList
-
-        elif ('g' in switches or 'c' in switches):
-            for i in getChoices(choiceList):
-                chosenFiles.append(choiceList[int(i) - 1])
-
-    else:
-        print "ERROR: Empty file list. No files in current directory."
-        exit(1)
-
-    return chosenFiles
 
 
 def pullFiles(chosenFiles):
@@ -108,15 +30,6 @@ def pullFiles(chosenFiles):
     totalTime = time() - startTime
     print totalTime, " seconds", "( ", totalTime / 60.0, " minutes ) "
     print (totalFileSize / 1.0) / (time() - startTime), " MB/s"
-
-
-def getFiles(mainSock, switches):
-    mainSock.send("retrieveFileList" + "\n")
-
-    choiceList = json.loads(mainSock.recv(DATA_RATE))
-    chosenFiles = getFilesToReceive(choiceList, switches)
-    pullFiles(chosenFiles)
-
 
 def changeRemoteDirectory(mainSock, switches):
     mainSock.send("changeDir" + "\n")
@@ -256,18 +169,26 @@ def main():
             "Enter number of file(s) separated by commas\n").split(',')
 
         rc.send_msg(json.dumps(choices))
-        print len(choices)
+
         for c in range(0, len(choices)):
             filename, filesize = json.loads(rc.receive_msg())
             filename = os.path.split(filename)[1]
             print "Creating:", filename
-            print "Filesize:", filesize
+            print "Filesize: {} bytes".format(filesize)
+            hash_func = hashlib.sha512()
             with open(filename, "wb") as writer:
                 data_received = 0
                 while data_received < filesize:
                     data = rc.receive_msg()
                     data_received += len(data)
+                    hash_func.update(data)
                     writer.write(data)
+
+            expected_checksum = rc.receive_msg()
+            print "expected checksum  :", expected_checksum
+            print "calculated checksum:", hash_func.hexdigest()
+            if expected_checksum != hash_func.hexdigest():
+                pass  # retry
 
     elif "nu" in switches:
         operation = "create_new_user"
