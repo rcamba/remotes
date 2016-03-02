@@ -70,9 +70,9 @@ class RemoteClient:
 
         self.max_get_files_tries = 3
         self.data_rate = 32768
-        self.struct_size = 8 # >Q
+        self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
-        self.timeout = 10 # seconds
+        self.timeout = 10  # seconds
         self.socket.settimeout(self.timeout)
 
         self.password = "abcdef"
@@ -152,13 +152,13 @@ def create_file(client):
     return hash_func.hexdigest()
 
 
-def get_files(client, filename_choices=[], tries=0):
+def get_files(client, filename_choices=None, tries=0):
     operation = "get_files"
     client.send_msg(operation)
 
     f_list = json.loads(client.receive_msg())
 
-    if len(filename_choices) == 0:
+    if filename_choices is None:
         print_list(f_list)
         choices = raw_input(
             "Enter number of file(s) separated by commas\n").split(',')
@@ -169,17 +169,69 @@ def get_files(client, filename_choices=[], tries=0):
     for f in filename_choices:
         calculated_checksum = create_file(client)
         expected_checksum = client.receive_msg()
-        # print "Expected checksum  :", expected_checksum
-        # print "Calculated checksum:", calculated_checksum
+
         if expected_checksum != calculated_checksum:
+
             if tries > client.max_get_files_tries:
                 raise MaxTriesExceededError(
                     "Tried to download {} and failed {} times.".format(
                         f, client.max_get_files_tries))
             else:
+                print "Expected checksum  :", expected_checksum
+                print "Calculated checksum:", calculated_checksum
                 print "Checksums do not match retrying."
                 tries += 1
                 get_files(RemoteClient(), [f], tries)
+
+
+def send_files(client, interactive=False):
+    operation = "send_files"
+    client.send_msg(operation)
+
+    pruned_f_list = []
+    if interactive:
+        # Cli[p]board ?
+        prompt = "Get files to send from:\n" \
+                 "[C]urrent directory\n" \
+                 "[O]ther directory\n" \
+                 "[T]yping filenames"
+        choice = raw_input(prompt)
+
+        if choice.lower() == "c":
+            f_list = os.getcwd()
+            print_list(f_list)
+            file_indexes = raw_input(
+                "Enter number(s) separated by comma").split(',')
+            pruned_f_list = [f_list[int(fi)-1] for fi in file_indexes]
+
+    else:
+        filename = sys.argv[2]
+        pruned_f_list = [filename]
+
+    for f in pruned_f_list:
+        if not os.path.isabs(f):
+            filename = os.path.join(os.getcwd(), filename)
+
+        if not os.path.isfile(filename):
+            raise IOError("{} is not a valid file".format(filename))
+
+        filesize = int(os.path.getsize(filename))
+
+        print "Sending :", f
+        print "Filesize: {} bytes\n".format(filesize)
+        client.send_msg(json.dumps((os.path.split(f)[1], filesize)))
+
+        hash_func = hashlib.sha512()
+        data_sent = 0
+        with open(f, "rb") as reader:
+            while data_sent < filesize:
+                data = reader.read(client.data_rate)
+                data_sent += len(data)
+                hash_func.update(data)
+                client.send_msg(data)
+
+        checksum = hash_func.hexdigest()
+        client.send_msg(checksum)
 
 
 def create_new_user(client):
@@ -195,7 +247,7 @@ def create_new_user(client):
 def main():
 
     rc = RemoteClient()
-
+    # TODO Deal with switches and argv - possibly use argparse
     switches = map(lambda x: x.replace("-", ""), sys.argv[1:])
 
     if "rc" in switches:
@@ -203,6 +255,12 @@ def main():
 
     elif "gf" in switches:
         get_files(rc)
+
+    elif "sf" in switches:
+        send_files(rc)
+
+    elif "sfi" in switches:
+        send_files(rc, interactive=True)
 
     elif "nu" in switches:
         create_new_user(rc)

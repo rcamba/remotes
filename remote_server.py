@@ -109,8 +109,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         elif operation == "get_files":
             self.get_files()
 
-        elif operation == "getFile":
-            self.__getFile__()
+        elif operation == "send_files":
+            self.send_files()
 
         elif operation == "sendFile":
             self.__receiveFile__()
@@ -203,7 +203,29 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
                 checksum = hash_func.hexdigest()
                 self.send_msg(checksum)
 
-        self.send_msg("Finished operation get_file")
+        self.send_msg("Finished operation get_files")
+
+    def send_files(self):
+        print "Receiving files"
+
+        filename, filesize = json.loads(self.receive_msg())
+        print "Creating:", filename
+        print "Filesize: {} bytes".format(filesize)
+
+        hash_func = hashlib.sha512()
+        with open(filename, "wb") as writer:
+            data_received = 0
+            while data_received < filesize:
+                data = self.receive_msg()
+                data_received += len(data)
+                hash_func.update(data)
+                writer.write(data)
+
+        calculated_checksum = hash_func.hexdigest()
+        expected_checksum = self.receive_msg()
+        print calculated_checksum == expected_checksum
+
+        self.send_msg("Finished operation send_files")
 
     """
     def __retrieveFileList__(self):
