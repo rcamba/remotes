@@ -17,6 +17,8 @@ import string
 import random
 import struct
 
+import cliser_shared
+
 currDir = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
 
 HOST = socket.gethostbyname("localhost")  # socket.gethostname()
@@ -38,7 +40,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.conf_parser.read(self.config_file)
         self.timeout = 10  # overrides parent
 
-        self.struct_size = 8 # >Q
+        self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
 
         self.data_rate = 32768
@@ -208,20 +210,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
     def send_files(self):
         print "Receiving files"
 
-        filename, filesize = json.loads(self.receive_msg())
-        print "Creating:", filename
-        print "Filesize: {} bytes".format(filesize)
-
-        hash_func = hashlib.sha512()
-        with open(filename, "wb") as writer:
-            data_received = 0
-            while data_received < filesize:
-                data = self.receive_msg()
-                data_received += len(data)
-                hash_func.update(data)
-                writer.write(data)
-
-        calculated_checksum = hash_func.hexdigest()
+        calculated_checksum = cliser_shared.create_file(self)
         expected_checksum = self.receive_msg()
         print calculated_checksum == expected_checksum
 

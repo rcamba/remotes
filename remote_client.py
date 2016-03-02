@@ -6,6 +6,7 @@ import pickle
 import json
 from time import time, sleep
 import struct
+import cliser_shared
 
 
 """
@@ -136,22 +137,6 @@ def run_command(client):
     client.send_msg(command_args)
 
 
-def create_file(client):
-    filename, filesize = json.loads(client.receive_msg())
-    print "Creating:", filename
-    print "Filesize: {} bytes".format(filesize)
-    hash_func = hashlib.sha512()
-    with open(filename, "wb") as writer:
-        data_received = 0
-        while data_received < filesize:
-            data = client.receive_msg()
-            data_received += len(data)
-            hash_func.update(data)
-            writer.write(data)
-
-    return hash_func.hexdigest()
-
-
 def get_files(client, filename_choices=None, tries=0):
     operation = "get_files"
     client.send_msg(operation)
@@ -167,7 +152,7 @@ def get_files(client, filename_choices=None, tries=0):
     client.send_msg(json.dumps(filename_choices))
 
     for f in filename_choices:
-        calculated_checksum = create_file(client)
+        calculated_checksum = cliser_shared.create_file(client)
         expected_checksum = client.receive_msg()
 
         if expected_checksum != calculated_checksum:
