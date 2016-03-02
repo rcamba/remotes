@@ -144,6 +144,58 @@ def print_list(item_list):
         number += 1
 
 
+def run_command(client):
+    operation = "run_command"
+    command = sys.argv[2]
+    command_args = " ".join(sys.argv[3:])
+
+    client.send_msg(operation)
+    client.send_msg(command)
+    client.send_msg(command_args)
+
+
+def get_files(client):
+    operation = "get_files"
+    client.send_msg(operation)
+
+    f_list = json.loads(client.receive_msg())
+    print_list(f_list)
+    choices = raw_input(
+        "Enter number of file(s) separated by commas\n").split(',')
+
+    client.send_msg(json.dumps(choices))
+
+    for c in range(0, len(choices)):
+        filename, filesize = json.loads(client.receive_msg())
+        filename = os.path.split(filename)[1]
+        print "Creating:", filename
+        print "Filesize: {} bytes".format(filesize)
+        hash_func = hashlib.sha512()
+        with open(filename, "wb") as writer:
+            data_received = 0
+            while data_received < filesize:
+                data = client.receive_msg()
+                data_received += len(data)
+                hash_func.update(data)
+                writer.write(data)
+
+        expected_checksum = client.receive_msg()
+        print "expected checksum  :", expected_checksum
+        print "calculated checksum:", hash_func.hexdigest()
+        if expected_checksum != hash_func.hexdigest():
+            pass  # retry
+
+
+def create_new_user(client):
+    operation = "create_new_user"
+    new_user = sys.argv[2]
+    new_password = " ".join(sys.argv[3:])
+    msg = new_user + " " + new_password
+
+    client.send_msg(operation)
+    client.send_msg(msg)
+
+
 def main():
 
     rc = RemoteClient()
@@ -151,53 +203,13 @@ def main():
     switches = map(lambda x: x.replace("-", ""), sys.argv[1:])
 
     if "rc" in switches:
-        operation = "run_command"
-        command = sys.argv[2]
-        command_args = " ".join(sys.argv[3:])
-
-        rc.send_msg(operation)
-        rc.send_msg(command)
-        rc.send_msg(command_args)
+        run_command(rc)
 
     elif "gf" in switches:
-        operation = "get_files"
-        rc.send_msg(operation)
-
-        f_list = json.loads(rc.receive_msg())
-        print_list(f_list)
-        choices = raw_input(
-            "Enter number of file(s) separated by commas\n").split(',')
-
-        rc.send_msg(json.dumps(choices))
-
-        for c in range(0, len(choices)):
-            filename, filesize = json.loads(rc.receive_msg())
-            filename = os.path.split(filename)[1]
-            print "Creating:", filename
-            print "Filesize: {} bytes".format(filesize)
-            hash_func = hashlib.sha512()
-            with open(filename, "wb") as writer:
-                data_received = 0
-                while data_received < filesize:
-                    data = rc.receive_msg()
-                    data_received += len(data)
-                    hash_func.update(data)
-                    writer.write(data)
-
-            expected_checksum = rc.receive_msg()
-            print "expected checksum  :", expected_checksum
-            print "calculated checksum:", hash_func.hexdigest()
-            if expected_checksum != hash_func.hexdigest():
-                pass  # retry
+        get_files(rc)
 
     elif "nu" in switches:
-        operation = "create_new_user"
-        new_user = sys.argv[2]
-        new_password = " ".join(sys.argv[3:])
-        msg = new_user + " " + new_password
-
-        rc.send_msg(operation)
-        rc.send_msg(msg)
+        create_new_user(rc)
 
     elif "shutdown" in switches:
         operation = "shutdown"
