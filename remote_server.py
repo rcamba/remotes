@@ -37,8 +37,14 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
     def authenticate(self):
         print "Authenticating client:", (self.client_address)
+
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
+
+        # if there are no others users make first user connecting as admin...
+        if (len(self.conf_parser.sections()) == 1 and
+                self.conf_parser.sections()[0] == "Settings"):
+            self.create_new_user(user, msg)
 
         try:
             hash_ = self.conf_parser.get(user, "hash")
@@ -54,7 +60,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         print "Authenticated:        ", self.client_address
 
     def update_settings(self, targ_setting, new_value):
-        self.conf_parser.add_section("Settings")
+        # self.conf_parser.add_section("Settings")
         self.conf_parser.set("Settings", targ_setting, new_value)
         with open(self.config_file, 'wb') as cff:
             self.conf_parser.write(cff)
@@ -101,9 +107,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         elif operation == "send_files":
             self.send_files()
 
-        elif operation == "sendFile":
-            self.__receiveFile__()
-
         elif operation == "changeDir":
             self.__changeDir__()
 
@@ -115,11 +118,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         self.finish()
 
-    def create_new_user(self):
-        try:
-            new_user, new_password = self.receive_msg().split(' ', 1)
-        except ValueError:
-            raise
+    def create_new_user(self, new_user=None, new_password=None):
+
+        if all([new_user is None, new_password is None]):
+            try:
+                new_user, new_password = self.receive_msg().split(' ', 1)
+            except ValueError:
+                raise
+
+        elif any([new_user is None, new_password is None]):
+            raise ValueError("Must provide both username and password")
 
         if any(c for c in new_user
                if c not in string.ascii_letters and
@@ -247,10 +255,35 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
 
 
+def check_for_config_file():
+    """
+    Checks if config file exists
+        if not then create one
+
+        defaults:
+            [Section] - [Option] - [Value]
+            Settings - "default_dir" - server current dir
+
+        First user to connect will have them as admin
+    """
+
+    config_file = "server_data"
+    if not os.path.isfile(config_file):
+        with open(config_file, "wb"):
+            pass
+
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.add_section("Settings")
+    conf_parser.set("Settings", "default_dir", os.getcwd())
+    with open(config_file, 'wb') as cff:
+        conf_parser.write(cff)
+
+
 if __name__ == "__main__":
     host = socket.gethostbyname("localhost")  # socket.gethostname()
     port = 9988
 
+    check_for_config_file()
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
 
     print "Server running on:" + socket.gethostbyname(host)
