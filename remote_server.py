@@ -187,23 +187,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
                      filename_choices)
 
         for f in f_list:
-
-            filesize = int(os.path.getsize(f))
-            print "Sending :", f
-            print "Filesize: {} bytes\n".format(filesize)
-
-            self.send_msg(json.dumps((os.path.split(f)[1], filesize)))
-            hash_func = hashlib.sha512()
-            data_sent = 0
-            with open(f, "rb") as reader:
-                while data_sent < filesize:
-                    data = reader.read(self.data_rate)
-                    data_sent += len(data)
-                    hash_func.update(data)
-                    self.send_msg(data)
-
-                checksum = hash_func.hexdigest()
-                self.send_msg(checksum)
+            cliser_shared.send_file(self, f)
 
         self.send_msg("Finished operation get_files")
 
@@ -212,7 +196,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         calculated_checksum = cliser_shared.create_file(self)
         expected_checksum = self.receive_msg()
-        print calculated_checksum == expected_checksum
+        if calculated_checksum != expected_checksum:  # ask to resend
+            self.send_msg("receive_failure")
+
+        else:
+            print "Checksums match!"
+            self.send_msg("receive_success")
 
         self.send_msg("Finished operation send_files")
 

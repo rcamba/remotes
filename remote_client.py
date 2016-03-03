@@ -155,8 +155,10 @@ def get_files(client, filename_choices=None, tries=0):
         calculated_checksum = cliser_shared.create_file(client)
         expected_checksum = client.receive_msg()
 
-        if expected_checksum != calculated_checksum:
+        if expected_checksum == calculated_checksum:
+            print "Checksums match!"
 
+        else:
             if tries > client.max_get_files_tries:
                 raise MaxTriesExceededError(
                     "Tried to download {} and failed {} times.".format(
@@ -195,28 +197,18 @@ def send_files(client, interactive=False):
 
     for f in pruned_f_list:
         if not os.path.isabs(f):
-            filename = os.path.join(os.getcwd(), filename)
+            filename = os.path.join(os.getcwd(), f)
 
         if not os.path.isfile(filename):
             raise IOError("{} is not a valid file".format(filename))
 
-        filesize = int(os.path.getsize(filename))
+        cliser_shared.send_file(client, filename)
 
-        print "Sending :", f
-        print "Filesize: {} bytes\n".format(filesize)
-        client.send_msg(json.dumps((os.path.split(f)[1], filesize)))
-
-        hash_func = hashlib.sha512()
-        data_sent = 0
-        with open(f, "rb") as reader:
-            while data_sent < filesize:
-                data = reader.read(client.data_rate)
-                data_sent += len(data)
-                hash_func.update(data)
-                client.send_msg(data)
-
-        checksum = hash_func.hexdigest()
-        client.send_msg(checksum)
+        send_status = client.receive_msg()
+        if send_status == "receive_failure":
+            raise IOError("{} was not received properly. " +
+                          "Retry".format(filename))
+            # TODO alternative to recursion
 
 
 def create_new_user(client):
