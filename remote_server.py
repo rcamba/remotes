@@ -60,6 +60,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         print "Authenticated:        ", self.client_address
 
     def update_settings(self, targ_setting, new_value):
+        print "Updating Settings"
         # self.conf_parser.add_section("Settings")
         self.conf_parser.set("Settings", targ_setting, new_value)
         with open(self.config_file, 'wb') as cff:
@@ -106,6 +107,11 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         elif operation == "send_files":
             self.send_files()
+
+        elif operation == "updating_settings":
+            target_option, new_value = json.loads(self.receive_msg())
+            self.update_settings(target_option, new_value)
+            self.send_msg("Successfully updated settings")
 
         elif operation == "changeDir":
             self.__changeDir__()
@@ -161,7 +167,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         with open(self.config_file, 'wb') as cff:
             self.conf_parser.write(cff)
 
-        self.send_msg("Created new user: " + new_user)
+        if all([new_user is None, new_password is None]):
+            self.send_msg("Created new user: " + new_user)
 
     def get_files_list(self):
         f_list = os.listdir(unicode(self.default_dir))
@@ -269,6 +276,8 @@ def check_for_config_file():
 
     config_file = "server_data"
     if not os.path.isfile(config_file):
+        print "Config file {c} not found. Creating new file {c}.".format(
+            c=config_file)
         with open(config_file, "wb"):
             pass
 

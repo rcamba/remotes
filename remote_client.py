@@ -131,6 +131,7 @@ def get_files(client, filename_choices=None, tries=0):
                     "Tried to download {} and failed {} times.".format(
                         f, client.max_get_files_tries))
             else:
+                # TODO shared way to handle checksum and retry
                 print "Expected checksum  :", expected_checksum
                 print "Calculated checksum:", calculated_checksum
                 print "Checksums do not match retrying."
@@ -172,6 +173,7 @@ def send_files(client, interactive=False):
         cliser_shared.send_file(client, filename)
 
         send_status = client.receive_msg()
+        # TODO shared way to handle checksum and retry
         if send_status == "receive_failure":
             raise IOError("{} was not received properly. " +
                           "Retry".format(filename))
@@ -208,6 +210,11 @@ def main():
 
     elif "nu" in switches:
         create_new_user(rc)
+
+    elif "us" in switches:
+        operation = "updating_settings"
+        rc.send_msg(operation)
+        rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
 
     elif "shutdown" in switches:
         operation = "shutdown"
