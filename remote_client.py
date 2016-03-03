@@ -1,10 +1,7 @@
-import hashlib
 import socket
 import sys
 import os
-import pickle
 import json
-from time import time, sleep
 import struct
 import cliser_shared
 
@@ -25,36 +22,6 @@ def changeRemoteDirectory(mainSock, switches):
 
     mainSock.send(chosenDir[0].encode("utf-8") + "\n")
     print mainSock.recv(DATA_RATE)
-
-
-def sendFile(mainSock, switches, file):
-    print "Sending ", file
-    mainSock.send("sendFile" + "\n")
-    mainSock.send(sys.argv[1] + "\n")
-
-    fileSize = os.path.getsize(sys.argv[1])
-    print str(fileSize / 1048576) + " MB"
-    mainSock.send(str(fileSize) + "\n")
-
-    f = open(file, 'rb')
-    data = f.read(DATA_RATE)
-    dataSent = len(data)
-    mainSock.send(data)
-
-    prevPct = 0
-    while(dataSent < fileSize):
-        data = f.read(DATA_RATE)
-        dataSent = dataSent + len(data)
-
-        currPct = int((round(dataSent / (fileSize * 1.0), 2)) * 100)
-        if currPct != prevPct:
-            drawLoadingBar(str(currPct) + "%")
-            prevPct = currPct
-
-        mainSock.send(data)
-
-    f.close()
-    print "File sent"
 """
 
 
@@ -64,8 +31,8 @@ class MaxTriesExceededError(Exception):
 
 class RemoteClient:
 
-    def __init__(self):
-        self.target_host = socket.gethostbyname("localhost")
+    def __init__(self, target_host=socket.gethostbyname("localhost")):
+        self.target_host = target_host
         self.port = 9988
         self.socket = self.init_socket_connection()
 

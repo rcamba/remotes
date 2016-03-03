@@ -1,28 +1,15 @@
 import socket
-import threading
 import SocketServer
 import os
-import pickle
 import json
-import time
-import shutil
 import subprocess
 import thread
-import errno
-import select
 import ConfigParser
 import hashlib
 import uuid
 import string
-import random
 import struct
-
 import cliser_shared
-
-currDir = "C:\\Users\\Kevin\\Downloads\\uT_Downloads"
-
-HOST = socket.gethostbyname("localhost")  # socket.gethostname()
-PORT = 9988
 
 
 class InvalidCredentialsError(Exception):
@@ -198,6 +185,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         expected_checksum = self.receive_msg()
         if calculated_checksum != expected_checksum:  # ask to resend
             self.send_msg("receive_failure")
+            # TODO alternative to recursion
 
         else:
             print "Checksums match!"
@@ -206,20 +194,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.send_msg("Finished operation send_files")
 
     """
-    def __retrieveFileList__(self):
-        fList = getList("file")
-
-        print "Sending file list"
-
-        self.wfile.write(json.dumps(fList))
-
-    def __getFile__(self):
-        fileToRetrieve = self.rfile.readline().replace("\n", "")
-        fileToRetrieve = fileToRetrieve.decode('utf-8')
-
-        print "Sending file: ",
-        self.__sendFile__(fileToRetrieve)
-
     def __changeDir__(self):
         global currDir
         dirList = getList("dir")
@@ -241,67 +215,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         print "Current directory: ", currDir.encode('unicode_escape'), "\n"
 
-    def __sendFile__(self, file):
-        fileStr = file.encode('unicode_escape').replace("\u", "")
-        print fileStr
-        self.wfile.write((os.path.split(file)[1]).encode('utf-8'))
-
-        # file size
-        fileSize = os.path.getsize(file)
-        print "File size:", str(fileSize / 1048576.0), " MB"
-        self.wfile.write(fileSize)
-
-        time.sleep(1)
-
-        # open file and read data
-        f = open(file, 'rb')
-        data = f.read(DATA_RATE)
-        dataSent = len(data)
-        self.wfile.write(data)
-
-        while(dataSent < fileSize):
-            data = f.read(DATA_RATE)
-            dataSent = dataSent + len(data)
-            self.wfile.write(data)
-
-        f.close()
-
-        print "Deleting ", fileStr
-        os.remove(file)
-        cur_thread = threading.current_thread()
-        print cur_thread.name
-        print "Done\n\n"
-
-    def __receiveFile__(self):
-        locked_currDir = currDir  # "locked"
-
-        fileName = self.rfile.readline().replace("\n", "")
-        print fileName
-
-        fileSize = int(self.rfile.readline())
-        print str(fileSize / 1048576) + " MB"
-
-        f = open(fileName, 'wb')
-        data = self.rfile.readline()
-
-        dataRecv = len(data)
-        f.write(data)
-
-        prevPct = 0
-        while(dataRecv < fileSize):
-
-            data = self.rfile.readline()
-            dataRecv = dataRecv + len(data)
-            currPct = int((round(dataRecv / (fileSize * 1.0), 2)) * 100)
-            if currPct != prevPct:
-                drawLoadingBar(str(currPct) + "%")
-                prevPct = currPct
-
-            f.write(data)
-
-        print "\n"
-
-        f.close()
     """
 
     def run_command(self):
@@ -334,35 +247,13 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
 
 
-"""
-def getList(targ):
-
-    fList = os.listdir(unicode(currDir))
-    for i in range(len(fList) - 1, -1, -1):
-
-        unicodeFileName = unicode(fList[i])
-        fList[i] = currDir + "\\" + unicodeFileName
-
-        if targ == "file":
-            if(os.path.isfile(fList[i]) is False):
-                fList.remove(fList[i])
-
-        elif targ == "dir":
-            if(os.path.isdir(fList[i]) is False):
-                fList.remove(fList[i])
-
-    if targ == "dir":
-        fList.insert(0, "..")
-        fList.insert(0, ".")
-
-    fList.sort()
-
-    return fList
-"""
-
 if __name__ == "__main__":
-    server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+    host = socket.gethostbyname("localhost")  # socket.gethostname()
+    port = 9988
 
-    print "Server running on:" + socket.gethostbyname(HOST)
+    server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
+
+    print "Server running on:" + socket.gethostbyname(host)
+
     server.serve_forever()
     server.server_close()
