@@ -25,13 +25,15 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.conf_parser = ConfigParser.RawConfigParser()
         self.config_file = "server_data"
         self.conf_parser.read(self.config_file)
-        self.timeout = 10  # overrides parent
+        self.timeout = 20  # overrides parent
 
         self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
 
         self.data_rate = 32768
         self.default_dir = self.conf_parser.get("Settings", "default_dir")
+        self.user = ""
+        self.curr_dir = ""
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
 
@@ -59,12 +61,29 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         print "Authenticated:        ", self.client_address
 
-    def update_settings(self, targ_setting, new_value):
+    def update_settings(self, targ_opt, new_value):
         print "Updating Settings"
         # self.conf_parser.add_section("Settings")
-        self.conf_parser.set("Settings", targ_setting, new_value)
-        with open(self.config_file, 'wb') as cff:
-            self.conf_parser.write(cff)
+        success = False
+        if self.conf_parser.has_option("Settings", targ_opt):
+            self.conf_parser.set("Settings", targ_opt, new_value)
+            with open(self.config_file, 'wb') as cff:
+                self.conf_parser.write(cff)
+            success = True
+
+        return success
+
+    def update_user_settings(self, targ_opt, new_value):
+        print "Updating user settings"
+
+        success = False
+        if self.conf_parser.has_option(self.user, targ_opt):
+            self.conf_parser.set(self.user, targ_opt, new_value)
+            with open(self.config_file, 'wb') as cff:
+                self.conf_parser.write(cff)
+            success = True
+
+        return success
 
     # modified https://stackoverflow.com/questions/17667903/17668009#17668009
     def send_msg(self, msg):
@@ -91,6 +110,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
     def handle(self):
 
         self.authenticate()
+
+        self.user = socket.gethostbyaddr(self.client_address[0])[0]
+        self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
+
         operation = self.receive_msg()
 
         if operation == "shutdown":
@@ -110,11 +133,19 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         elif operation == "updating_settings":
             target_option, new_value = json.loads(self.receive_msg())
-            self.update_settings(target_option, new_value)
-            self.send_msg("Successfully updated settings")
+            success = self.update_settings(target_option, new_value)
+            if success:
+                self.send_msg("Successfully updated settings")
+            else:
+                self.send_msg(
+                    "Failed to update settings. "
+                    "{} is not a valid option.".format(target_option))
 
-        elif operation == "changeDir":
-            self.__changeDir__()
+        elif operation == "list_items_in_dir":
+            self.list_items_in_dir()
+
+        elif operation == "change_dir":
+            self.change_dir()
 
         elif operation == "run_command":
             self.run_command()
@@ -164,6 +195,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.conf_parser.set(new_user, "hash", new_hash)
         self.conf_parser.set(new_user, "salt", new_salt)
 
+        self.conf_parser.set(new_user, "curr_dir", self.default_dir)
+
         with open(self.config_file, 'wb') as cff:
             self.conf_parser.write(cff)
 
@@ -171,11 +204,65 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             self.send_msg("Created new user: " + new_user)
 
     def get_files_list(self):
-        f_list = os.listdir(unicode(self.default_dir))
-        f_list = map(lambda f: os.path.join(self.default_dir, f), f_list)
+        f_list = os.listdir(unicode(self.curr_dir))
+        f_list = map(lambda f:
+                     os.path.normpath(os.path.join(self.curr_dir, f).encode(
+                         "unicode_escape"), f_list))
         f_list = [os.path.split(f)[1] for f in f_list if os.path.isfile(f)]
         f_list.sort()
         return f_list
+
+    def get_dir_list(self):
+        dir_list = os.listdir(unicode(self.curr_dir))
+        dir_list = map(lambda d:
+                       os.path.normpath(os.path.join(self.curr_dir, d).encode(
+                           "unicode_escape")), dir_list)
+        dir_list = [d for d in dir_list if os.path.isdir(d)]
+        dir_list.sort()
+        return dir_list
+
+    def list_items_in_dir(self):
+        items_list = self.get_dir_list()
+        items_list.extend(self.get_files_list())
+        items_list.sort()
+        self.send_msg(json.dumps(items_list))
+        self.send_msg("Finished operation display_dir")
+
+    def change_dir(self):
+
+        instr = "Enter full directory name or navigate using numbers.\n" \
+                "Enter 'q' when finished.\n" \
+                "Enter 'd' to quit and discard changes in directory.\n"
+
+        dir_list = self.get_dir_list()
+        dir_list.insert(0, os.path.abspath(
+            os.path.join(self.curr_dir, os.pardir)))
+
+        self.send_msg(instr)
+        self.send_msg(json.dumps(dir_list))
+
+        choice = self.receive_msg()
+        while choice != "q" and choice != "d":
+
+            err = None
+            if not os.path.isdir(choice):
+                err = "{} is not a valid directory.".format(choice)
+            else:
+                self.curr_dir = choice
+                dir_list = self.get_dir_list()
+                dir_list.insert(0, os.path.abspath(
+                    os.path.join(self.curr_dir, os.pardir)))
+            self.send_msg(json.dumps((dir_list, err)))
+            choice = self.receive_msg()
+
+        if choice == "d":
+            self.send_msg("No changes have been made")
+
+        elif choice == "q":
+            self.update_user_settings("curr_dir", self.curr_dir)
+            msg = "Changed current directory to: {}".format(self.curr_dir)
+            print msg
+            self.send_msg(msg)
 
     def get_files(self):
         print "Sending file list"
@@ -207,30 +294,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             self.send_msg("receive_success")
 
         self.send_msg("Finished operation send_files")
-
-    """
-    def __changeDir__(self):
-        global currDir
-        dirList = getList("dir")
-
-        print "Sending available directories "
-        self.wfile.write(pickle.dumps((currDir, dirList)))
-
-        targDir = self.rfile.readline().replace("\n", "").decode('utf-8')
-
-        if targDir == '.':
-            currDir = currDir
-        elif targDir == "..":
-            currDir = currDir[:currDir.rindex("\\")]
-        else:
-            if os.path.isdir(targDir):
-                currDir = targDir
-            else:
-                print "Invalid directory: ", targDir
-
-        print "Current directory: ", currDir.encode('unicode_escape'), "\n"
-
-    """
 
     def run_command(self):
         command = self.receive_msg()
@@ -281,11 +344,11 @@ def check_for_config_file():
         with open(config_file, "wb"):
             pass
 
-    conf_parser = ConfigParser.RawConfigParser()
-    conf_parser.add_section("Settings")
-    conf_parser.set("Settings", "default_dir", os.getcwd())
-    with open(config_file, 'wb') as cff:
-        conf_parser.write(cff)
+        conf_parser = ConfigParser.RawConfigParser()
+        conf_parser.add_section("Settings")
+        conf_parser.set("Settings", "default_dir", os.getcwd())
+        with open(config_file, 'a') as cff:
+            conf_parser.write(cff)
 
 
 if __name__ == "__main__":
@@ -293,6 +356,7 @@ if __name__ == "__main__":
     port = 9988
 
     check_for_config_file()
+
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
 
     print "Server running on:" + socket.gethostbyname(host)

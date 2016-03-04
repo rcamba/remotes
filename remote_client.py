@@ -6,25 +6,6 @@ import struct
 import cliser_shared
 
 
-"""
-def changeRemoteDirectory(mainSock, switches):
-    mainSock.send("changeDir" + "\n")
-    currDir, dirList = pickle.loads(mainSock.recv(DATA_RATE))
-    print "Current directory: ", currDir
-
-    print "Available directories: "
-
-    if 'cm' in switches:
-        chosenDir = []
-        chosenDir.append(raw_input("Enter directory name: "))
-    else:
-        chosenDir = getFilesToReceive(dirList, switches)
-
-    mainSock.send(chosenDir[0].encode("utf-8") + "\n")
-    print mainSock.recv(DATA_RATE)
-"""
-
-
 class MaxTriesExceededError(Exception):
     pass
 
@@ -198,6 +179,37 @@ def main():
 
     if "rc" in switches:
         run_command(rc)
+
+    elif "cd" in switches:
+        operation = "change_dir"
+        rc.send_msg(operation)
+        instructions = rc.receive_msg()
+
+        dir_list = json.loads(rc.receive_msg())
+        print instructions
+        print_list(dir_list)
+        choice = raw_input()
+        if choice.isdigit():
+            rc.send_msg(dir_list[(int(choice)-1)])
+        else:
+            rc.send_msg(choice.lower())
+
+        while choice != "q" and choice != "d":
+            dir_list, err = json.loads(rc.receive_msg())
+            print_list(dir_list)
+            if err is not None:
+                print err
+            choice = raw_input()
+
+            if choice.isdigit():
+                rc.send_msg(dir_list[(int(choice)-1)])
+            else:
+                rc.send_msg(choice.lower())
+
+    elif "ls" in switches:
+        operation = "list_items_in_dir"
+        rc.send_msg(operation)
+        print_list(json.loads(rc.receive_msg()))
 
     elif "gf" in switches:
         get_files(rc)
