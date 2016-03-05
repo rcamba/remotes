@@ -9,7 +9,6 @@ import hashlib
 import uuid
 import string
 import struct
-import time
 import threading
 import cliser_shared
 
@@ -42,10 +41,9 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
                                                    client_address, server_)
 
     def authenticate(self):
-        print "Authenticating client:", (self.client_address)
-
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
+        print "Authenticating client:", (user)
 
         # if there are no others users make first user connecting as admin...
         if (len(self.conf_parser.sections()) == 1 and
@@ -63,7 +61,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             raise InvalidCredentialsError(
                 "Invalid credentials")
 
-        print "Authenticated:        ", self.client_address
+        print "Authenticated:        ", user
 
     def update_settings(self, targ_opt, new_value):
         print "Updating Settings"
@@ -375,23 +373,6 @@ def check_for_config_file():
 if __name__ == "__main__":
     host = socket.gethostbyname("localhost")  # socket.gethostname()
     port = 9988
-
-    main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    err_code = main_sock.connect_ex((host, port))
-    main_sock.close()
-
-    init_time = time.time()
-    startup_timeout = 60  # seconds
-
-    while err_code != 10061:
-        print err_code
-        main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        err_code = main_sock.connect_ex((host, port))
-        main_sock.close()
-        time.sleep(1)
-
-        if (time.time() - init_time) > startup_timeout:
-            raise Exception("Port {} is taken. Can't start.".format(port))
 
     check_for_config_file()
 
