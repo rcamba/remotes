@@ -228,6 +228,10 @@ def main():
         rc.send_msg(operation)
         rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
 
+    elif "restart" in switches:
+        operation = "restart"
+        rc.send_msg(operation)
+
     elif "shutdown" in switches:
         operation = "shutdown"
         rc.send_msg(operation)

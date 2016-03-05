@@ -9,6 +9,8 @@ import hashlib
 import uuid
 import string
 import struct
+import time
+import threading
 import cliser_shared
 
 
@@ -123,6 +125,19 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             self.send_msg(msg)
             print msg
             thread.start_new_thread(server.shutdown, ())
+
+        elif operation == "restart":
+            msg = "Restarting"
+            self.send_msg(msg)
+            print msg
+            t = threading.Thread(target=server.shutdown())
+            while t.is_alive():
+                t.join(1)
+
+            detached_process = 0x00000008
+            subprocess.Popen(["python", "remote_server.py"], shell=True,
+                             stdin=None, stdout=None, stderr=None,
+                             creationflags=detached_process)
 
         elif operation == "create_new_user":
             self.create_new_user()
@@ -361,11 +376,28 @@ if __name__ == "__main__":
     host = socket.gethostbyname("localhost")  # socket.gethostname()
     port = 9988
 
+    main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    err_code = main_sock.connect_ex((host, port))
+    main_sock.close()
+
+    init_time = time.time()
+    startup_timeout = 60  # seconds
+
+    while err_code != 10061:
+        print err_code
+        main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        err_code = main_sock.connect_ex((host, port))
+        main_sock.close()
+        time.sleep(1)
+
+        if (time.time() - init_time) > startup_timeout:
+            raise Exception("Port {} is taken. Can't start.".format(port))
+
     check_for_config_file()
 
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
 
-    print "Server running on:" + socket.gethostbyname(host)
+    print "Server running on:", socket.gethostbyname(host)
 
     server.serve_forever()
     server.server_close()
