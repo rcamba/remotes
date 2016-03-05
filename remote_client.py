@@ -2,7 +2,6 @@ import socket
 import sys
 import os
 import json
-import struct
 import cliser_shared
 
 
@@ -10,19 +9,24 @@ class MaxTriesExceededError(Exception):
     pass
 
 
-class RemoteClient:
+class RemoteClient(cliser_shared.CliserSocketCommunication):
 
     def __init__(self, target_host=socket.gethostbyname("localhost")):
+
         self.target_host = target_host
         self.port = 9988
         self.socket = self.init_socket_connection()
 
         self.max_get_files_tries = 3
         self.data_rate = 32768
+
         self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
+
         self.timeout = 10  # seconds
         self.socket.settimeout(self.timeout)
+
+        self.msg_handler = self.socket
 
         self.password = "abcdef"
         self.authenticate()
@@ -38,27 +42,7 @@ class RemoteClient:
     def authenticate(self):
         self.send_msg(self.password)
 
-    # modified https://stackoverflow.com/questions/17667903/17668009#17668009
-    def send_msg(self, msg):
-        msg = struct.pack(self.struct_fmt, len(msg)) + msg
-        self.socket.sendall(msg)
-
-    def receive_msg(self):
-        raw_msglen = self.recvall(self.struct_size)
-        if not raw_msglen:
-            raise ValueError("Message has no length")
-        msglen = struct.unpack(self.struct_fmt, raw_msglen)[0]
-        return self.recvall(msglen)
-
-    def recvall(self, n):
-        data = ""
-        while len(data) < n:
-            packet = self.socket.recv(n - len(data))
-            if not packet:
-                data = None
-                break
-            data += packet
-        return data
+    # message handling (send/recv) inherited from CliserSocketCommunication
 
     def close_connection(self):
         self.socket.close()

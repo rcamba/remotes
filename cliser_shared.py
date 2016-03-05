@@ -1,6 +1,7 @@
 import json
 import hashlib
 import os
+import struct
 
 
 def create_file(socket):
@@ -47,3 +48,28 @@ def send_file(socket, filename):
 
     checksum = hash_func.hexdigest()
     socket.send_msg(checksum)
+
+
+class CliserSocketCommunication(object):
+
+    # modified https://stackoverflow.com/questions/17667903/17668009#17668009
+    def send_msg(self, msg):
+        msg = struct.pack(self.struct_fmt, len(msg)) + msg
+        self.msg_handler.sendall(msg)
+
+    def receive_msg(self):
+        raw_msglen = self.recvall(self.struct_size)
+        if not raw_msglen:
+            raise ValueError("Message has no length")
+        msglen = struct.unpack(self.struct_fmt, raw_msglen)[0]
+        return self.recvall(msglen)
+
+    def recvall(self, n):
+        data = ""
+        while len(data) < n:
+            packet = self.msg_handler.recv(n - len(data))
+            if not packet:
+                data = None
+                break
+            data += packet
+        return data

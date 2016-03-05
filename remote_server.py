@@ -8,7 +8,6 @@ import ConfigParser
 import hashlib
 import uuid
 import string
-import struct
 import threading
 import cliser_shared
 
@@ -21,11 +20,14 @@ class DuplicateUserError(Exception):
     pass
 
 
-class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
+class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
+                                cliser_shared.CliserSocketCommunication):
+
     def __init__(self, request, client_address, server_):
         self.conf_parser = ConfigParser.RawConfigParser()
         self.config_file = "server_data"
         self.conf_parser.read(self.config_file)
+
         self.timeout = 20  # overrides parent
 
         self.struct_size = 8  # >Q
@@ -34,8 +36,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
         self.data_rate = 32768
         self.default_dir = self.conf_parser.get("Settings", "default_dir")
 
+        # values set when client connects in self.handle()
         self.user = ""
         self.curr_dir = ""
+        self.msg_handler = ""
 
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
@@ -87,34 +91,15 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         return success
 
-    # modified https://stackoverflow.com/questions/17667903/17668009#17668009
-    def send_msg(self, msg):
-        msg = struct.pack(self.struct_fmt, len(msg)) + msg
-        self.request.sendall(msg)
-
-    def receive_msg(self):
-        raw_msglen = self.recvall(self.struct_size)
-        if not raw_msglen:
-            raise ValueError("Message has no length")
-        msglen = struct.unpack(self.struct_fmt, raw_msglen)[0]
-        return self.recvall(msglen)
-
-    def recvall(self, n):
-        data = ""
-        while len(data) < n:
-            packet = self.request.recv(n - len(data))
-            if not packet:
-                data = None
-                break
-            data += packet
-        return data
+    # message handling (send/recv) inherited from CliserSocketCommunication
 
     def handle(self):
 
-        self.authenticate()
-
+        self.msg_handler = self.request
         self.user = socket.gethostbyaddr(self.client_address[0])[0]
         self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
+
+        self.authenticate()
 
         operation = self.receive_msg()
 
