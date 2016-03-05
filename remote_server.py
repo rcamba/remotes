@@ -291,7 +291,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         filename_choices = json.loads(self.receive_msg())
 
-        f_list = map(lambda f_: os.path.join(self.default_dir, f_),
+        f_list = map(lambda f_: os.path.join(self.curr_dir, f_),
                      filename_choices)
 
         for f in f_list:
