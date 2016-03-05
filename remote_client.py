@@ -66,7 +66,7 @@ class RemoteClient:
 
 def print_list(item_list):
     number = 1
-    symbols = ["!", "@", "#"]
+    symbols = ["!", "+", "#"]
 
     for item in item_list:
         symbol = symbols[number % 3]

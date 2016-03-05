@@ -32,8 +32,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         self.data_rate = 32768
         self.default_dir = self.conf_parser.get("Settings", "default_dir")
+
         self.user = ""
         self.curr_dir = ""
+
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
 
@@ -205,17 +207,17 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
     def get_files_list(self):
         f_list = os.listdir(unicode(self.curr_dir))
-        f_list = map(lambda f:
-                     os.path.normpath(os.path.join(self.curr_dir, f).encode(
-                         "unicode_escape"), f_list))
+        f_list = map(lambda f_:
+                     os.path.normpath(os.path.join(self.curr_dir, f_).encode(
+                         "unicode_escape")), f_list)
         f_list = [os.path.split(f)[1] for f in f_list if os.path.isfile(f)]
         f_list.sort()
         return f_list
 
     def get_dir_list(self):
         dir_list = os.listdir(unicode(self.curr_dir))
-        dir_list = map(lambda d:
-                       os.path.normpath(os.path.join(self.curr_dir, d).encode(
+        dir_list = map(lambda d_:
+                       os.path.normpath(os.path.join(self.curr_dir, d_).encode(
                            "unicode_escape")), dir_list)
         dir_list = [d for d in dir_list if os.path.isdir(d)]
         dir_list.sort()
@@ -232,7 +234,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         instr = "Enter full directory name or navigate using numbers.\n" \
                 "Enter 'q' when finished.\n" \
-                "Enter 'd' to quit and discard changes in directory.\n"
+                "Enter 'd' to quit and discard changes in directory.\n" \
+                "Enter 'r' to reset directory to default.\n"
 
         dir_list = self.get_dir_list()
         dir_list.insert(0, os.path.abspath(
@@ -264,6 +267,9 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
             print msg
             self.send_msg(msg)
 
+        elif choice == "r":
+            self.update_user_settings("curr_dir", self.default_dir)
+
     def get_files(self):
         print "Sending file list"
         f_list = self.get_files_list()
@@ -272,7 +278,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler):
 
         filename_choices = json.loads(self.receive_msg())
 
-        f_list = map(lambda f: os.path.join(self.default_dir, f),
+        f_list = map(lambda f_: os.path.join(self.default_dir, f_),
                      filename_choices)
 
         for f in f_list:
