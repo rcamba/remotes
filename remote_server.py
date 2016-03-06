@@ -69,7 +69,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
     def update_settings(self, targ_opt, new_value):
         print "Updating Settings"
-        # self.conf_parser.add_section("Settings")
+
         success = False
         if self.conf_parser.has_option("Settings", targ_opt):
             self.conf_parser.set("Settings", targ_opt, new_value)
@@ -103,24 +103,33 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         operation = self.receive_msg()
 
-        if operation == "shutdown":
-            msg = "Shutting down server"
-            self.send_msg(msg)
-            print msg
-            thread.start_new_thread(server.shutdown, ())
+        if operation == "run_command":
+            self.run_command()
 
-        elif operation == "restart":
-            msg = "Restarting"
-            self.send_msg(msg)
-            print msg
-            t = threading.Thread(target=server.shutdown())
-            while t.is_alive():
-                t.join(1)
+        elif operation == "change_dir":
+            self.change_dir()
 
-            detached_process = 0x00000008
-            subprocess.Popen(["python", "remote_server.py"], shell=True,
-                             stdin=None, stdout=None, stderr=None,
-                             creationflags=detached_process)
+        elif operation == "list_items_in_dir":
+            self.list_items_in_dir()
+
+        elif operation == "get_files":
+            self.get_files()
+
+        elif operation == "send_files":
+            self.send_files()
+
+        elif operation == "create_new_user":
+            self.create_new_user()
+
+        elif operation == "update_settings":
+            target_option, new_value = json.loads(self.receive_msg())
+            success = self.update_settings(target_option, new_value)
+            if success:
+                self.send_msg("Successfully updated settings")
+            else:
+                self.send_msg(
+                    "Failed to update settings. "
+                    "{} is not a valid option.".format(target_option))
 
         elif operation == "update_server":
             msg = "Updating server"
@@ -135,38 +144,150 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                              stdin=None, stdout=None, stderr=None,
                              creationflags=detached_process)
 
-        elif operation == "create_new_user":
-            self.create_new_user()
+        elif operation == "restart":
+            msg = "Restarting"
+            self.send_msg(msg)
+            print msg
+            t = threading.Thread(target=server.shutdown())
+            while t.is_alive():
+                t.join(1)
 
-        elif operation == "get_files":
-            self.get_files()
+            detached_process = 0x00000008
+            subprocess.Popen(["python", "remote_server.py"], shell=True,
+                             stdin=None, stdout=None, stderr=None,
+                             creationflags=detached_process)
 
-        elif operation == "send_files":
-            self.send_files()
-
-        elif operation == "updating_settings":
-            target_option, new_value = json.loads(self.receive_msg())
-            success = self.update_settings(target_option, new_value)
-            if success:
-                self.send_msg("Successfully updated settings")
-            else:
-                self.send_msg(
-                    "Failed to update settings. "
-                    "{} is not a valid option.".format(target_option))
-
-        elif operation == "list_items_in_dir":
-            self.list_items_in_dir()
-
-        elif operation == "change_dir":
-            self.change_dir()
-
-        elif operation == "run_command":
-            self.run_command()
+        elif operation == "shutdown":
+            msg = "Shutting down server"
+            self.send_msg(msg)
+            print msg
+            thread.start_new_thread(server.shutdown, ())
 
         else:
-            self.request.send("Invalid operation")
+            self.request.send("Invalid operation {}".format(operation))
 
         self.finish()
+
+    def run_command(self):
+        command = self.receive_msg()
+        print "Running command:", command
+
+        command_args = self.receive_msg()
+        print "Command arguments:", command_args
+
+        if len(command_args) == 0:
+            proc = subprocess.Popen(
+                [command], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=True)
+            out, err = proc.communicate()
+        else:
+            proc = subprocess.Popen(
+                [command, command_args], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=True)
+            out, err = proc.communicate()
+
+        if err is not None and len(err) > 0:
+            self.send_msg(err)
+        else:
+            self.send_msg(out)
+
+        print "Finished running command"
+
+    def change_dir(self):
+
+        instr = "Enter full directory name or navigate using numbers.\n" \
+                "Enter 'q' when finished.\n" \
+                "Enter 'd' to quit and discard changes in directory.\n" \
+                "Enter 'r' to reset directory to default.\n"
+
+        dir_list = self.get_dir_list()
+        dir_list.insert(0, os.path.abspath(
+            os.path.join(self.curr_dir, os.pardir)))
+
+        self.send_msg(instr)
+        self.send_msg(json.dumps(dir_list))
+
+        choice = self.receive_msg()
+        while choice != "q" and choice != "d":
+
+            err = None
+            if not os.path.isdir(choice):
+                err = "{} is not a valid directory.".format(choice)
+            else:
+                self.curr_dir = choice
+                dir_list = self.get_dir_list()
+                dir_list.insert(0, os.path.abspath(
+                    os.path.join(self.curr_dir, os.pardir)))
+            self.send_msg(json.dumps((dir_list, err)))
+            choice = self.receive_msg()
+
+        if choice == "d":
+            self.send_msg("No changes have been made")
+
+        elif choice == "q":
+            self.update_user_settings("curr_dir", self.curr_dir)
+            msg = "Changed current directory to: {}".format(self.curr_dir)
+            print msg
+            self.send_msg(msg)
+
+        elif choice == "r":
+            self.update_user_settings("curr_dir", self.default_dir)
+
+    def list_items_in_dir(self):
+        items_list = self.get_dir_list()
+        items_list.extend(self.get_files_list())
+        items_list.sort()
+        self.send_msg(json.dumps(items_list))
+        self.send_msg("Finished operation display_dir")
+
+    def get_files_list(self):
+        f_list = os.listdir(unicode(self.curr_dir))
+        f_list = map(lambda f_:
+                     os.path.normpath(os.path.join(self.curr_dir, f_).encode(
+                         "unicode_escape")), f_list)
+        f_list = [os.path.split(f)[1] for f in f_list if os.path.isfile(f)]
+        f_list.sort()
+        return f_list
+
+    def get_dir_list(self):
+        dir_list = os.listdir(unicode(self.curr_dir))
+        dir_list = map(lambda d_:
+                       os.path.normpath(os.path.join(self.curr_dir, d_).encode(
+                           "unicode_escape")), dir_list)
+        dir_list = [d for d in dir_list if os.path.isdir(d)]
+        dir_list.sort()
+        return dir_list
+
+    def get_files(self):
+        print "Sending file list"
+        f_list = self.get_files_list()
+
+        self.send_msg(json.dumps(f_list))
+
+        filename_choices = json.loads(self.receive_msg())
+
+        f_list = map(lambda f_: os.path.join(self.curr_dir, f_),
+                     filename_choices)
+
+        for f in f_list:
+            cliser_shared.send_file(self, f)
+
+        self.send_msg("Finished operation get_files")
+
+    def send_files(self):
+        print "Receiving files"
+
+        calculated_checksum = cliser_shared.create_file(self)
+        expected_checksum = self.receive_msg()
+        if calculated_checksum != expected_checksum:  # ask to resend
+            self.send_msg("receive_failure")
+            # TODO alternative to recursion
+
+        else:
+            print "Checksums match!"
+            self.send_msg("receive_success")
+
+        self.send_msg("Finished operation send_files")
 
     def create_new_user(self, new_user=None, new_password=None):
 
@@ -215,127 +336,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         if all([new_user is None, new_password is None]):
             self.send_msg("Created new user: " + new_user)
-
-    def get_files_list(self):
-        f_list = os.listdir(unicode(self.curr_dir))
-        f_list = map(lambda f_:
-                     os.path.normpath(os.path.join(self.curr_dir, f_).encode(
-                         "unicode_escape")), f_list)
-        f_list = [os.path.split(f)[1] for f in f_list if os.path.isfile(f)]
-        f_list.sort()
-        return f_list
-
-    def get_dir_list(self):
-        dir_list = os.listdir(unicode(self.curr_dir))
-        dir_list = map(lambda d_:
-                       os.path.normpath(os.path.join(self.curr_dir, d_).encode(
-                           "unicode_escape")), dir_list)
-        dir_list = [d for d in dir_list if os.path.isdir(d)]
-        dir_list.sort()
-        return dir_list
-
-    def list_items_in_dir(self):
-        items_list = self.get_dir_list()
-        items_list.extend(self.get_files_list())
-        items_list.sort()
-        self.send_msg(json.dumps(items_list))
-        self.send_msg("Finished operation display_dir")
-
-    def change_dir(self):
-
-        instr = "Enter full directory name or navigate using numbers.\n" \
-                "Enter 'q' when finished.\n" \
-                "Enter 'd' to quit and discard changes in directory.\n" \
-                "Enter 'r' to reset directory to default.\n"
-
-        dir_list = self.get_dir_list()
-        dir_list.insert(0, os.path.abspath(
-            os.path.join(self.curr_dir, os.pardir)))
-
-        self.send_msg(instr)
-        self.send_msg(json.dumps(dir_list))
-
-        choice = self.receive_msg()
-        while choice != "q" and choice != "d":
-
-            err = None
-            if not os.path.isdir(choice):
-                err = "{} is not a valid directory.".format(choice)
-            else:
-                self.curr_dir = choice
-                dir_list = self.get_dir_list()
-                dir_list.insert(0, os.path.abspath(
-                    os.path.join(self.curr_dir, os.pardir)))
-            self.send_msg(json.dumps((dir_list, err)))
-            choice = self.receive_msg()
-
-        if choice == "d":
-            self.send_msg("No changes have been made")
-
-        elif choice == "q":
-            self.update_user_settings("curr_dir", self.curr_dir)
-            msg = "Changed current directory to: {}".format(self.curr_dir)
-            print msg
-            self.send_msg(msg)
-
-        elif choice == "r":
-            self.update_user_settings("curr_dir", self.default_dir)
-
-    def get_files(self):
-        print "Sending file list"
-        f_list = self.get_files_list()
-
-        self.send_msg(json.dumps(f_list))
-
-        filename_choices = json.loads(self.receive_msg())
-
-        f_list = map(lambda f_: os.path.join(self.curr_dir, f_),
-                     filename_choices)
-
-        for f in f_list:
-            cliser_shared.send_file(self, f)
-
-        self.send_msg("Finished operation get_files")
-
-    def send_files(self):
-        print "Receiving files"
-
-        calculated_checksum = cliser_shared.create_file(self)
-        expected_checksum = self.receive_msg()
-        if calculated_checksum != expected_checksum:  # ask to resend
-            self.send_msg("receive_failure")
-            # TODO alternative to recursion
-
-        else:
-            print "Checksums match!"
-            self.send_msg("receive_success")
-
-        self.send_msg("Finished operation send_files")
-
-    def run_command(self):
-        command = self.receive_msg()
-        print "Running command:", command
-
-        command_args = self.receive_msg()
-        print "Command arguments:", command_args
-
-        if len(command_args) == 0:
-            proc = subprocess.Popen(
-                [command], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=True)
-            out, err = proc.communicate()
-        else:
-            proc = subprocess.Popen(
-                [command, command_args], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=True)
-            out, err = proc.communicate()
-
-        if err is not None and len(err) > 0:
-            self.send_msg(err)
-        else:
-            self.send_msg(out)
-
-        print "Finished running command"
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):

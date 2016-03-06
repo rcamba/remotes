@@ -48,6 +48,49 @@ class RemoteClient(cliser_shared.CliserSocketCommunication):
         self.socket.close()
 
 
+def run_command(client):
+    operation = "run_command"
+    command = sys.argv[2]
+    command_args = " ".join(sys.argv[3:])
+
+    client.send_msg(operation)
+    client.send_msg(command)
+    client.send_msg(command_args)
+
+
+def change_dir(client):
+    operation = "change_dir"
+    client.send_msg(operation)
+    instructions = client.receive_msg()
+
+    dir_list = json.loads(client.receive_msg())
+    print instructions
+    print_list(dir_list)
+    choice = raw_input()
+    if choice.isdigit():
+        client.send_msg(dir_list[(int(choice)-1)])
+    else:
+        client.send_msg(choice.lower())
+
+    while choice != "q" and choice != "d":
+        dir_list, err = json.loads(client.receive_msg())
+        print_list(dir_list)
+        if err is not None:
+            print err
+        choice = raw_input()
+
+        if choice.isdigit():
+            client.send_msg(dir_list[(int(choice)-1)])
+        else:
+            client.send_msg(choice.lower())
+
+
+def list_dir(client):
+    operation = "list_items_in_dir"
+    client.send_msg(operation)
+    print_list(json.loads(client.receive_msg()))
+
+
 def print_list(item_list):
     number = 1
     symbols = ["!", "+", "#"]
@@ -57,16 +100,6 @@ def print_list(item_list):
         print "[{s}  {n}  {s}] {i} [{s}  {n}  {s}]".format(
             s=symbol, n=number, i=item)
         number += 1
-
-
-def run_command(client):
-    operation = "run_command"
-    command = sys.argv[2]
-    command_args = " ".join(sys.argv[3:])
-
-    client.send_msg(operation)
-    client.send_msg(command)
-    client.send_msg(command_args)
 
 
 def get_files(client, filename_choices=None, tries=0):
@@ -165,35 +198,10 @@ def main():
         run_command(rc)
 
     elif "cd" in switches:
-        operation = "change_dir"
-        rc.send_msg(operation)
-        instructions = rc.receive_msg()
-
-        dir_list = json.loads(rc.receive_msg())
-        print instructions
-        print_list(dir_list)
-        choice = raw_input()
-        if choice.isdigit():
-            rc.send_msg(dir_list[(int(choice)-1)])
-        else:
-            rc.send_msg(choice.lower())
-
-        while choice != "q" and choice != "d":
-            dir_list, err = json.loads(rc.receive_msg())
-            print_list(dir_list)
-            if err is not None:
-                print err
-            choice = raw_input()
-
-            if choice.isdigit():
-                rc.send_msg(dir_list[(int(choice)-1)])
-            else:
-                rc.send_msg(choice.lower())
+        change_dir(rc)
 
     elif "ls" in switches:
-        operation = "list_items_in_dir"
-        rc.send_msg(operation)
-        print_list(json.loads(rc.receive_msg()))
+        list_dir(rc)
 
     elif "gf" in switches:
         get_files(rc)
@@ -207,12 +215,12 @@ def main():
     elif "nu" in switches:
         create_new_user(rc)
 
-    elif "us" in switches:
-        operation = "updating_settings"
+    elif "usettings" in switches:
+        operation = "update_settings"
         rc.send_msg(operation)
         rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
 
-    elif "update_server" in switches:
+    elif "userver" in switches:
         operation = "update_server"
         rc.send_msg(operation)
 
