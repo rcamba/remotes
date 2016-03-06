@@ -96,10 +96,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def handle(self):
 
         self.msg_handler = self.request
+        self.authenticate()
+
         self.user = socket.gethostbyaddr(self.client_address[0])[0]
         self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
-
-        self.authenticate()
 
         operation = self.receive_msg()
 

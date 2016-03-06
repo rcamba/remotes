@@ -2,20 +2,67 @@ import json
 import hashlib
 import os
 import struct
+import sys
+
+
+def get_filesize_str(filesize_):
+    """
+    Constructs upload speed string
+    Converts the given filesize_ argument to the largest possible
+    metric (bytes, kilobytes, megabytes, ...) rounded to two decimal places
+
+    arguments:
+        :param filesize_: filesize of file in bytes
+
+    return filesize string
+    """
+
+    metrics = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB"]
+
+    metric_limit = 1024.0
+    metric_count = 0
+    while filesize_ >= metric_limit:
+        filesize_ /= metric_limit
+        metric_count += 1
+
+    filesize = round(filesize_, 2)
+
+    return str(filesize) + " " + metrics[metric_count]
+
+
+def update_progress_stdin(prev, prog):
+    if prog != prev:
+        sys.stdout.write(len(prog) * "\b")
+        sys.stdout.write(len(prog) * " ")
+        sys.stdout.write(len(prog) * "\b")
+        sys.stdout.write(prog)
 
 
 def create_file(socket):
     filename, filesize = json.loads(socket.receive_msg())
     print "Creating:", filename
-    print "Filesize: {} bytes".format(filesize)
+    print "Filesize: {} ".format(get_filesize_str(filesize))
     hash_func = hashlib.sha512()
+
+    # create file in location that remote_server.py was started in
+    #     to avoid possibly overwriting files in self.curr_dir
+    # moving file to a different folder needs to be done explicitly
     with open(filename, "wb") as writer:
-        data_received = 0
+        data_received = 0.0
+
+        progress_msg = ""
         while data_received < filesize:
+            prev_progress_msg = progress_msg
+            progress_msg = str(round((data_received/filesize) * 100)) + "%"
+
+            update_progress_stdin(prev_progress_msg, progress_msg)
+
             data = socket.receive_msg()
             data_received += len(data)
             hash_func.update(data)
             writer.write(data)
+
+        sys.stdout.write("\n")
 
     return hash_func.hexdigest()
 
