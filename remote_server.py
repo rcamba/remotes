@@ -122,6 +122,19 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                              stdin=None, stdout=None, stderr=None,
                              creationflags=detached_process)
 
+        elif operation == "update_server":
+            msg = "Updating server"
+            self.send_msg(msg)
+            print msg
+            t = threading.Thread(target=server.shutdown())
+            while t.is_alive():
+                t.join(1)
+
+            detached_process = 0x00000008
+            subprocess.Popen(["python", "updater.py"], shell=True,
+                             stdin=None, stdout=None, stderr=None,
+                             creationflags=detached_process)
+
         elif operation == "create_new_user":
             self.create_new_user()
 

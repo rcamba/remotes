@@ -212,6 +212,10 @@ def main():
         rc.send_msg(operation)
         rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
 
+    elif "update_server" in switches:
+        operation = "update_server"
+        rc.send_msg(operation)
+
     elif "restart" in switches:
         operation = "restart"
         rc.send_msg(operation)
