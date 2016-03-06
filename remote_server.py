@@ -28,7 +28,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.config_file = "server_data"
         self.conf_parser.read(self.config_file)
 
-        self.timeout = 20  # overrides parent
+        # self.timeout = 90  # overrides parent
 
         self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"

@@ -23,7 +23,7 @@ class RemoteClient(cliser_shared.CliserSocketCommunication):
         self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
 
-        self.timeout = 10  # seconds
+        self.timeout = 300  # seconds
         self.socket.settimeout(self.timeout)
 
         self.msg_handler = self.socket
