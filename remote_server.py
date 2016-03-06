@@ -176,15 +176,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         print "Command arguments:", command_args
 
         if len(command_args) == 0:
-            proc = subprocess.Popen(
-                [command], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=True)
-            out, err = proc.communicate()
+            command_and_args = [command]
+
         else:
-            proc = subprocess.Popen(
-                [command, command_args], stdout=subprocess.PIPE,
+            command_and_args = [command, command_args]
+
+        proc = subprocess.Popen(
+                command_and_args, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, shell=True)
-            out, err = proc.communicate()
+
+        out, err = proc.communicate()
 
         if err is not None and len(err) > 0:
             self.send_msg(err)
