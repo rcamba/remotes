@@ -179,6 +179,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         print "Running command:", command
 
         command_args = self.receive_msg().split()
+        command_args = map(lambda c: "\"" + c + "\"", command_args)
+
         print "Command arguments:", command_args
 
         if len(command_args) == 0:
