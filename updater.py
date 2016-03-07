@@ -2,7 +2,7 @@ import subprocess
 import socket
 
 if __name__ == "__main__":
-    host = socket.gethostbyname("localhost")  # socket.gethostname()
+    host = socket.gethostname()
     port = 9988
     server_not_running_code = 10061
 

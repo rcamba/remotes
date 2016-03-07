@@ -56,7 +56,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             hash_ = self.conf_parser.get(user, "hash")
             salt = self.conf_parser.get(user, "salt")
         except ConfigParser.NoSectionError:
-            pass
+            hash_ = ""
+            salt = ""
 
         if hashlib.sha512(msg + salt).hexdigest() == hash_:
             valid = True
@@ -145,7 +146,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                 t.join(1)
 
             detached_process = 0x00000008
-            subprocess.Popen(["python", "updater.py"], shell=True,
+            subprocess.Popen(["python", "updater.py"],
                              stdin=None, stdout=None, stderr=None,
                              creationflags=detached_process)
 
@@ -158,7 +159,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                 t.join(1)
 
             detached_process = 0x00000008
-            subprocess.Popen(["python", "remote_server.py"], shell=True,
+            subprocess.Popen(["python", "remote_server.py"],
                              stdin=None, stdout=None, stderr=None,
                              creationflags=detached_process)
 
@@ -312,14 +313,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             msg = ("Invalid user: {}. " +
                    "Only letters and numbers are allowed.").format(new_user)
             self.send_msg(msg)
-            raise InvalidCredentialsError(msg)
 
         if any(c for c in new_password
                if c in string.whitespace):
             msg = "Invalid password: {}. No whitespace allowed.".format(
                 new_password)
             self.send_msg(msg)
-            raise InvalidCredentialsError(msg)
 
         try:
             self.conf_parser.add_section(new_user)
