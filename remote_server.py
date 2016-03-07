@@ -12,10 +12,6 @@ import threading
 import cliser_shared
 
 
-class InvalidCredentialsError(Exception):
-    pass
-
-
 class DuplicateUserError(Exception):
     pass
 
@@ -45,6 +41,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                                                    client_address, server_)
 
     def authenticate(self):
+        valid = False
+
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
         print "Authenticating client:", (user)
@@ -58,14 +56,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             hash_ = self.conf_parser.get(user, "hash")
             salt = self.conf_parser.get(user, "salt")
         except ConfigParser.NoSectionError:
-            raise InvalidCredentialsError(
-                "Unable to find credentials")
+            pass
 
-        if hashlib.sha512(msg + salt).hexdigest() != hash_:
-            raise InvalidCredentialsError(
-                "Invalid credentials")
+        if hashlib.sha512(msg + salt).hexdigest() == hash_:
+            valid = True
 
-        print "Authenticated:        ", user
+        return valid
 
     def update_settings(self, targ_opt, new_value):
         print "Updating Settings"
@@ -96,12 +92,21 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def handle(self):
 
         self.msg_handler = self.request
-        self.authenticate()
+        valid = self.authenticate()
+        if valid:
+            self.send_msg("Valid credentials")
+            self.user = socket.gethostbyaddr(self.client_address[0])[0]
+            self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
 
-        self.user = socket.gethostbyaddr(self.client_address[0])[0]
-        self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
+            print "Authenticated:        ", self.user
 
-        operation = self.receive_msg()
+            operation = self.receive_msg()
+
+        else:
+            print "Authentication failed:", \
+                socket.gethostbyaddr(self.client_address[0])[0]
+            self.send_msg("Invalid credentials")
+            return
 
         if operation == "run_command":
             self.run_command()
@@ -172,14 +177,14 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         command = self.receive_msg()
         print "Running command:", command
 
-        command_args = self.receive_msg()
+        command_args = self.receive_msg().split()
         print "Command arguments:", command_args
 
         if len(command_args) == 0:
             command_and_args = [command]
 
         else:
-            command_and_args = [command, command_args]
+            command_and_args = [command] + command_args
 
         proc = subprocess.Popen(
                 command_and_args, stdout=subprocess.PIPE,
@@ -370,7 +375,7 @@ def check_for_config_file():
 
 
 if __name__ == "__main__":
-    host = socket.gethostbyname("localhost")  # socket.gethostname()
+    host = socket.gethostname()
     port = 9988
 
     check_for_config_file()

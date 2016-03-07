@@ -9,6 +9,10 @@ class MaxTriesExceededError(Exception):
     pass
 
 
+class InvalidCredentialsError(Exception):
+    pass
+
+
 class RemoteClient(cliser_shared.CliserSocketCommunication):
 
     def __init__(self, target_host=socket.gethostbyname("localhost")):
@@ -41,6 +45,9 @@ class RemoteClient(cliser_shared.CliserSocketCommunication):
 
     def authenticate(self):
         self.send_msg(self.password)
+        result = self.receive_msg()
+        if "Invalid credentials" in result:
+            raise InvalidCredentialsError(result)
 
     # message handling (send/recv) inherited from CliserSocketCommunication
 
@@ -190,7 +197,7 @@ def create_new_user(client):
 
 def main():
 
-    rc = RemoteClient()
+    rc = RemoteClient(socket.gethostname())
     # TODO Deal with switches and argv - possibly use argparse
     switches = map(lambda x: x.replace("-", ""), sys.argv[1:])
 
