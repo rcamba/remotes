@@ -65,6 +65,17 @@ def run_command(client):
     client.send_msg(command_args)
 
 
+def open_in_firefox(client):
+    operation = "firefox_open"
+    # command_and_args = map(lambda c: "\"" + c + "\"", sys.argv[2:])
+    command_and_args = " ".join(sys.argv[2:])
+
+    print command_and_args
+
+    client.send_msg(operation)
+    client.send_msg(command_and_args)
+
+
 def change_dir(client):
     operation = "change_dir"
     client.send_msg(operation)
@@ -203,6 +214,9 @@ def main():
 
     if "rc" in switches:
         run_command(rc)
+
+    elif "ffo" in switches:
+        open_in_firefox(rc)
 
     elif "cd" in switches:
         change_dir(rc)

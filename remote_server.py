@@ -112,6 +112,9 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         if operation == "run_command":
             self.run_command()
 
+        elif operation == "firefox_open":
+            self.firefox_open()
+
         elif operation == "change_dir":
             self.change_dir()
 
@@ -179,8 +182,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         print "Running command:", command
 
         command_args = self.receive_msg().split()
-        command_args = map(lambda c: "\"" + c + "\"", command_args)
-
+        # command_args[-1] = "\"" + command_args[-1] + "\""
+        # command_args[-1] = command_args[-1].replace("&", "^&")
         print "Command arguments:", command_args
 
         if len(command_args) == 0:
@@ -201,6 +204,15 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg(out)
 
         print "Finished running command"
+
+    def firefox_open(self):
+        link = self.receive_msg()
+        print "Opening", link
+
+        complete_cmd = "firefox -new-tab \"{}\"".format(link)
+        print complete_cmd
+        os.system(complete_cmd)
+        self.send_msg("Finished firefox_open")
 
     def change_dir(self):
 
