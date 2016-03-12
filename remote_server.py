@@ -194,7 +194,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         proc = subprocess.Popen(
                 command_and_args, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=True)
+                stderr=subprocess.PIPE, shell=True, cwd=self.curr_dir)
 
         out, err = proc.communicate()
 
