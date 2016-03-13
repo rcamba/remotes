@@ -39,6 +39,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.conf_parser.read(self.config_file)
 
         # self.timeout = 90  # overrides parent
+        self.command_timeout = 180
 
         self.struct_size = 8  # >Q
         self.struct_fmt = ">Q"
@@ -50,6 +51,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.user = ""
         self.curr_dir = ""
         self.msg_handler = ""
+
+        self.ffo_proc = None
 
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
@@ -242,8 +245,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             link=link)
         print complete_cmd
 
-        p = subprocess.Popen(complete_cmd)
-        p.communicate()
+        def run_ffo_cmd():
+            self.ffo_proc = subprocess.Popen(complete_cmd)
+            self.ffo_proc.communicate()
+
+        t = threading.Thread(target=run_ffo_cmd)
+        t.start()
+        t.join(timeout=self.command_timeout)
+        if t.is_alive():
+            self.ffo_proc.terminate()
+            t.join()
 
         if sys.platform.startswith("win32"):
             os.remove(command_name)
