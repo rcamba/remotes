@@ -62,6 +62,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         if hashlib.sha512(msg + salt).hexdigest() == hash_:
             valid = True
+            self.user = user
 
         return valid
 
@@ -97,8 +98,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         valid = self.authenticate()
         if valid:
             self.send_msg("Valid credentials")
-            self.user = socket.gethostbyaddr(self.client_address[0])[0]
-            self.user = self.user.lower()
             self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
 
             print "Authenticated:        ", self.user
