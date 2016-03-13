@@ -45,6 +45,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
+        user = user.lower()
         print "Authenticating client:", (user)
 
         # if there are no others users make first user connecting as admin...
@@ -97,6 +98,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         if valid:
             self.send_msg("Valid credentials")
             self.user = socket.gethostbyaddr(self.client_address[0])[0]
+            self.user = self.user.lower()
             self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
 
             print "Authenticated:        ", self.user
@@ -335,6 +337,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg(msg)
 
         try:
+            new_user = new_user.lower()
             self.conf_parser.add_section(new_user)
 
         except ConfigParser.DuplicateSectionError:
