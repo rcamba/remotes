@@ -10,10 +10,24 @@ import uuid
 import string
 import threading
 import cliser_shared
+import time
+import sys
 
 
 class DuplicateUserError(Exception):
     pass
+
+
+def create_batch_file(command_loc):
+    batch_name = "{time}_{cmd}.bat".format(time=str(time.time()),
+                                           cmd=os.path.split(command_loc)[1])
+    arg_list = map(lambda n: '%' + str(n), range(1, 10))
+    arg_str = " ".join(arg_list)
+    with open(batch_name, 'w') as writer:
+        writer.write("\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str))
+        writer.write("\n")
+
+    return batch_name
 
 
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
@@ -210,9 +224,30 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         link = self.receive_msg()
         print "Opening", link
 
-        complete_cmd = "firefox -new-tab \"{}\"".format(link)
+        # "Program Files (x86)\\Mozilla Firefox\\firefox.exe" ... "a=1&b=1"
+        # Workaround for running commands that have spaces and args that
+        #   use characters that don't get escaped (e.g &, =) even with '^'
+        if sys.platform.startswith("win32"):
+            ff_exe = os.path.join("C:", os.sep,
+                                  "Program Files (x86)",
+                                  "Mozilla Firefox", "firefox.exe")
+            command_name = create_batch_file(ff_exe)
+        elif sys.platform.startswith("linux"):
+            command_name = "firefox"
+        else:
+            raise OSError("Unsupported OS")
+
+        complete_cmd = "{cn} -new-tab \"{link}\"".format(
+            cn=command_name,
+            link=link)
         print complete_cmd
-        os.system(complete_cmd)
+
+        p = subprocess.Popen(complete_cmd)
+        p.communicate()
+
+        if sys.platform.startswith("win32"):
+            os.remove(command_name)
+
         self.send_msg("Finished firefox_open")
 
     def change_dir(self):
