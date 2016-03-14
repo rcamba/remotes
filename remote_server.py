@@ -18,11 +18,19 @@ class DuplicateUserError(Exception):
     pass
 
 
-def create_batch_file(command_loc):
-    batch_name = "{time}_{cmd}.bat".format(time=str(time.time()),
-                                           cmd=os.path.split(command_loc)[1])
-    arg_list = map(lambda n: '%' + str(n), range(1, 10))
-    arg_str = " ".join(arg_list)
+def create_batch_file(command_loc, command_args):
+    extension = None
+
+    if sys.platform.startswith("win32"):
+        extension = "bat"
+    elif sys.platform.startswith("linux"):
+        extension = "sh"
+
+    command_args = map(lambda a: "\"" + a + "\"", command_args)
+
+    batch_name = "{time}.{ext}".format(time=str(time.time()),
+                                       ext=extension)
+    arg_str = " ".join(command_args)
     with open(batch_name, 'w') as writer:
         writer.write("\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str))
         writer.write("\n")
@@ -53,6 +61,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.msg_handler = ""
 
         self.ffo_proc = None
+        self.rc_proc = None
 
         SocketServer.StreamRequestHandler.__init__(self, request,
                                                    client_address, server_)
@@ -195,27 +204,41 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         self.finish()
 
-    def run_command(self):
-        command = self.receive_msg()
+    def run_command(self, command=None, command_args=None):
+        if command is None:
+            command = self.receive_msg()
         print "Running command:", command
 
-        command_args = self.receive_msg().split()
-        # command_args[-1] = "\"" + command_args[-1] + "\""
-        # command_args[-1] = command_args[-1].replace("&", "^&")
+        if command_args is None:
+            command_args = self.receive_msg().split()
         print "Command arguments:", command_args
 
-        if len(command_args) == 0:
-            command_and_args = [command]
+        # Workaround for running commands that have spaces and args that
+        #   use characters that don't get escaped (e.g &, =) even with '^'
+        # e.g "Program Files (x86)\\Mozilla Firefox\\firefox.exe" ... "a=1&b=1"
+        command = os.path.normpath(command)
+        command_name = create_batch_file(command, command_args)
+        command_and_args = [command_name]
 
-        else:
-            command_and_args = [command] + command_args
+        communicate_container = []
 
-        proc = subprocess.Popen(
+        def run_cmd_t():
+            self.rc_proc = subprocess.Popen(
                 command_and_args, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, shell=True, cwd=self.curr_dir)
+            communicate_container.append(self.rc_proc.communicate())
+        print command_and_args
+        t = threading.Thread(target=run_cmd_t)
+        t.start()
+        t.join(timeout=self.command_timeout)
+        if t.is_alive():
+            self.rc_proc.terminate()
+            t.join()
 
-        out, err = proc.communicate()
+        os.remove(command_name)
 
+        out = communicate_container[0][0]
+        err = communicate_container[0][1]
         if err is not None and len(err) > 0:
             self.send_msg(err)
         else:
@@ -227,37 +250,17 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         link = self.receive_msg()
         print "Opening", link
 
-        # "Program Files (x86)\\Mozilla Firefox\\firefox.exe" ... "a=1&b=1"
-        # Workaround for running commands that have spaces and args that
-        #   use characters that don't get escaped (e.g &, =) even with '^'
         if sys.platform.startswith("win32"):
             ff_exe = os.path.join("C:", os.sep,
                                   "Program Files (x86)",
                                   "Mozilla Firefox", "firefox.exe")
-            command_name = create_batch_file(ff_exe)
         elif sys.platform.startswith("linux"):
-            command_name = "firefox"
+            ff_exe = os.path.join("usr", "bin", "firefox")
+
         else:
             raise OSError("Unsupported OS")
 
-        complete_cmd = "{cn} -new-tab \"{link}\"".format(
-            cn=command_name,
-            link=link)
-        print complete_cmd
-
-        def run_ffo_cmd():
-            self.ffo_proc = subprocess.Popen(complete_cmd)
-            self.ffo_proc.communicate()
-
-        t = threading.Thread(target=run_ffo_cmd)
-        t.start()
-        t.join(timeout=self.command_timeout)
-        if t.is_alive():
-            self.ffo_proc.terminate()
-            t.join()
-
-        if sys.platform.startswith("win32"):
-            os.remove(command_name)
+        self.run_command(command=ff_exe, command_args=["-new-tab", link])
 
         self.send_msg("Finished firefox_open")
 
