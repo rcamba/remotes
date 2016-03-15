@@ -443,9 +443,22 @@ if __name__ == "__main__":
     port = 9988
 
     check_for_config_file()
+    rev = subprocess.Popen(["git", "show", "--pretty=oneline",
+                            "--abbrev-commit", "--quiet", "HEAD"],
+                           stdout=subprocess.PIPE).communicate()[0].split()
+    line_limit = 79
+    char_count = 0
+
+    for i in range(0, len(rev)):
+        word = rev[i]
+        char_count += len(word)
+        if char_count >= line_limit:
+            rev[i - 1] += "\n"
+            char_count = len(word)
+
+    print " ".join(rev)
 
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
-
     print "Server running on:", socket.gethostbyname(host)
 
     server.serve_forever()
