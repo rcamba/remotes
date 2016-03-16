@@ -92,17 +92,23 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         return valid
 
-    def update_settings(self, targ_opt, new_value):
+    def update_settings(self):
         print "Updating Settings"
 
+        target_option, new_value = json.loads(self.receive_msg())
         success = False
-        if self.conf_parser.has_option("Settings", targ_opt):
-            self.conf_parser.set("Settings", targ_opt, new_value)
+        if self.conf_parser.has_option("Settings", target_option):
+            self.conf_parser.set("Settings", target_option, new_value)
             with open(self.config_file, 'wb') as cff:
                 self.conf_parser.write(cff)
             success = True
 
-        return success
+        if success:
+            self.send_msg("Successfully updated settings")
+        else:
+            self.send_msg(
+                "Failed to update settings. "
+                "{} is not a valid option.".format(target_option))
 
     def update_user_settings(self, targ_opt, new_value):
         print "Updating user settings"
@@ -115,6 +121,38 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             success = True
 
         return success
+
+    def update_server(self):
+        msg = "Updating server"
+        self.send_msg(msg)
+        print msg
+        t = threading.Thread(target=server.shutdown())
+        while t.is_alive():
+            t.join(1)
+
+        detached_process = 0x00000008
+        subprocess.Popen(["python", "updater.py"],
+                         stdin=None, stdout=None, stderr=None,
+                         creationflags=detached_process)
+
+    def restart_server(self):
+        msg = "Restarting"
+        self.send_msg(msg)
+        print msg
+        t = threading.Thread(target=server.shutdown())
+        while t.is_alive():
+            t.join(1)
+
+        detached_process = 0x00000008
+        subprocess.Popen(["python", "remote_server.py"],
+                         stdin=None, stdout=None, stderr=None,
+                         creationflags=detached_process)
+
+    def shutdown_server(self):
+        msg = "Shutting down server"
+        self.send_msg(msg)
+        print msg
+        thread.start_new_thread(server.shutdown, ())
 
     # message handling (send/recv) inherited from CliserSocketCommunication
 
@@ -136,69 +174,21 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg("Invalid credentials")
             return
 
-        if operation == "run_command":
-            self.run_command()
-
-        elif operation == "firefox_open":
-            self.firefox_open()
-
-        elif operation == "change_dir":
-            self.change_dir()
-
-        elif operation == "list_items_in_dir":
-            self.list_items_in_dir()
-
-        elif operation == "get_files":
-            self.get_files()
-
-        elif operation == "send_files":
-            self.send_files()
-
-        elif operation == "create_new_user":
-            self.create_new_user()
-
-        elif operation == "update_settings":
-            target_option, new_value = json.loads(self.receive_msg())
-            success = self.update_settings(target_option, new_value)
-            if success:
-                self.send_msg("Successfully updated settings")
-            else:
-                self.send_msg(
-                    "Failed to update settings. "
-                    "{} is not a valid option.".format(target_option))
-
-        elif operation == "update_server":
-            msg = "Updating server"
-            self.send_msg(msg)
-            print msg
-            t = threading.Thread(target=server.shutdown())
-            while t.is_alive():
-                t.join(1)
-
-            detached_process = 0x00000008
-            subprocess.Popen(["python", "updater.py"],
-                             stdin=None, stdout=None, stderr=None,
-                             creationflags=detached_process)
-
-        elif operation == "restart":
-            msg = "Restarting"
-            self.send_msg(msg)
-            print msg
-            t = threading.Thread(target=server.shutdown())
-            while t.is_alive():
-                t.join(1)
-
-            detached_process = 0x00000008
-            subprocess.Popen(["python", "remote_server.py"],
-                             stdin=None, stdout=None, stderr=None,
-                             creationflags=detached_process)
-
-        elif operation == "shutdown":
-            msg = "Shutting down server"
-            self.send_msg(msg)
-            print msg
-            thread.start_new_thread(server.shutdown, ())
-
+        operation_function_mapping = {
+            "run_command": self.run_command,
+            "firefox_open": self.firefox_open,
+            "change_dir": self.change_dir,
+            "list_items_in_dir": self.list_items_in_dir,
+            "get_files": self.get_files,
+            "send_files": self.send_files,
+            "create_new_user": self.create_new_user,
+            "update_settings": self.update_settings,
+            "update_server": self.update_server,
+            "restart": self.restart_server,
+            "shutdown": self.shutdown_server
+        }
+        if operation in operation_function_mapping:
+            operation_function_mapping[operation]()
         else:
             self.request.send("Invalid operation {}".format(operation))
 
