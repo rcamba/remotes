@@ -256,6 +256,18 @@ def get_config_password():
     return conf_parser.get("client", "password")
 
 
+def set_config_password(new_password):
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+
+    if " " in new_password:
+        raise InvalidCredentialsError("Password can't contain spaces")
+
+    conf_parser.set("client", "password", new_password)
+    with open(config_file, 'wb') as cff:
+            conf_parser.write(cff)
+
+
 def main():
 
     rc = RemoteClient(socket.gethostname())
@@ -274,8 +286,7 @@ def main():
     }
 
     custom_ops = get_custom_ops_config()
-    print switch
-    print custom_ops
+
     if switch in operation_function_mapping:
         func = operation_function_mapping[switch]["function"]
         func_args = operation_function_mapping[switch]["args"]
@@ -285,6 +296,10 @@ def main():
     elif switch in custom_ops:
         operation = switch
         rc.send_msg(operation)
+
+    elif "newpass" in switch:
+        set_config_password(sys.argv[2])
+        return
 
     elif "usettings" in switch:
         operation = "update_settings"
