@@ -3,6 +3,8 @@ import sys
 import os
 import json
 import cliser_shared
+import ConfigParser
+import ast
 
 
 class MaxTriesExceededError(Exception):
@@ -63,6 +65,41 @@ def run_command(client):
     client.send_msg(operation)
     client.send_msg(command)
     client.send_msg(command_args)
+
+
+def write_custom_operation_config(custom_ops):
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+    conf_parser.set("client", "custom_ops", custom_ops)
+    with open(config_file, 'wb') as cff:
+            conf_parser.write(cff)
+
+
+def add_custom_operation(client):
+    operation = "add_custom_operation"
+
+    custom_operation = sys.argv[2]
+    if " " in custom_operation:
+        raise ValueError(
+            "Operation can't contain spaces: {}".format(custom_operation))
+
+    custom_command = sys.argv[3]
+    custom_command_args = ""
+    if len(sys.argv) > 4:
+        custom_command_args = " ".join(sys.argv[4:])
+
+    client.send_msg(operation)
+    client.send_msg(json.dumps((custom_operation,
+                                custom_command, custom_command_args)))
+    result = client.receive_msg()
+
+    if result == "success":
+        custom_ops = get_custom_ops_config()
+        custom_ops.update({custom_operation:
+                          (custom_command, custom_command_args)})
+        write_custom_operation_config(custom_ops)
+    else:
+        print result
 
 
 def open_in_firefox(client):
@@ -169,7 +206,7 @@ def send_files(client, interactive=False):
         choice = raw_input(prompt)
 
         if choice.lower() == "c":
-            f_list = os.getcwd()
+            f_list = os.listdir(os.getcwd())
             print_list(f_list)
             file_indexes = raw_input(
                 "Enter number(s) separated by comma").split(',')
@@ -206,59 +243,116 @@ def create_new_user(client):
     client.send_msg(msg)
 
 
+def get_custom_ops_config():
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+    custom_ops = ast.literal_eval(conf_parser.get("client", "custom_ops"))
+    return custom_ops
+
+
 def main():
 
     rc = RemoteClient(socket.gethostname())
     # TODO Deal with switches and argv - possibly use argparse
-    switches = map(lambda x: x.replace("-", ""), sys.argv[1:])
+    switch = sys.argv[1].replace("-", "")
+    operation_function_mapping = {
+        "rc": {"function": run_command, "args": (rc,)},
+        "aco": {"function": add_custom_operation, "args": (rc,)},
+        "ffo": {"function": open_in_firefox, "args": (rc,)},
+        "cd": {"function": change_dir, "args": (rc,)},
+        "ls": {"function": list_dir, "args": (rc,)},
+        "gf": {"function": get_files, "args": (rc,)},
+        "sf": {"function": send_files, "args": (rc,)},
+        "sfi": {"function": send_files, "args": (rc, True)},
+        "nu": {"function": create_new_user, "args": (rc,)}
+    }
 
-    if "rc" in switches:
-        run_command(rc)
+    custom_ops = get_custom_ops_config()
+    print switch
+    print custom_ops
+    if switch in operation_function_mapping:
+        func = operation_function_mapping[switch]["function"]
+        func_args = operation_function_mapping[switch]["args"]
+        # noinspection PyCallingNonCallable
+        func(*func_args)
 
-    elif "ffo" in switches:
-        open_in_firefox(rc)
+    elif switch in custom_ops:
+        operation = switch
+        rc.send_msg(operation)
 
-    elif "cd" in switches:
-        change_dir(rc)
-
-    elif "ls" in switches:
-        list_dir(rc)
-
-    elif "gf" in switches:
-        get_files(rc)
-
-    elif "sf" in switches:
-        send_files(rc)
-
-    elif "sfi" in switches:
-        send_files(rc, interactive=True)
-
-    elif "nu" in switches:
-        create_new_user(rc)
-
-    elif "usettings" in switches:
+    elif "usettings" in switch:
         operation = "update_settings"
         rc.send_msg(operation)
         rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
 
-    elif "userver" in switches:
+    elif "userver" in switch:
         operation = "update_server"
         rc.send_msg(operation)
 
-    elif "restart" in switches:
+    elif "restart" in switch:
         operation = "restart"
         rc.send_msg(operation)
 
-    elif "shutdown" in switches:
+    elif "shutdown" in switch:
         operation = "shutdown"
         rc.send_msg(operation)
 
     else:
+        exit()
         rc.send_msg("")
 
     print rc.receive_msg()
     rc.close_connection()
 
 
+def check_for_config_file():
+    """
+    Checks if config file exists
+        if not then create one
+
+        defaults:
+            Section - Option - Value
+
+            user - password - abcdef
+            user - custom_ops - {}
+    """
+
+    if sys.platform.startswith("win32"):
+        config_storage = os.getenv("APPDATA")
+    elif sys.platform.startswith("linux"):
+        config_storage = os.path.expanduser('~')
+    else:
+        raise OSError("Unsupported OS")
+
+    config_storage_dir = os.path.join(config_storage, ".remotes-remote_client")
+    if not os.path.isdir(config_storage_dir):
+        os.mkdir(config_storage_dir)
+
+    config_file_ = os.path.join(config_storage_dir, "client_data")
+
+    if not os.path.isfile(config_file_):
+        print "Config file {c} not found. Creating new file {c}.".format(
+            c=config_file_)
+        with open(config_file_, "wb"):
+            pass
+
+        conf_parser = ConfigParser.RawConfigParser()
+        section = "client"
+        conf_parser.add_section(section)
+        default_options = {
+            "password": "abcdef",
+            "custom_ops": "{}"
+        }
+
+        for key in default_options.keys():
+            conf_parser.set(section, key, default_options[key])
+        with open(config_file_, 'a') as cff:
+            conf_parser.write(cff)
+
+    return config_file_
+
+
 if __name__ == "__main__":
+
+    config_file = check_for_config_file()
     main()
