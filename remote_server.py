@@ -12,6 +12,7 @@ import threading
 import cliser_shared
 import time
 import sys
+import ast
 
 
 class DuplicateUserError(Exception):
@@ -59,6 +60,22 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.user = ""
         self.curr_dir = ""
         self.msg_handler = ""
+
+        self.operation_function_mapping = {
+            "run_command": self.run_command,
+            "add_custom_operation": self.add_custom_operation,
+            "firefox_open": self.firefox_open,
+            "change_dir": self.change_dir,
+            "list_items_in_dir": self.list_items_in_dir,
+            "get_files": self.get_files,
+            "send_files": self.send_files,
+            "create_new_user": self.create_new_user,
+            "update_settings": self.update_settings,
+            "update_server": self.update_server,
+            "restart": self.restart_server,
+            "shutdown": self.shutdown_server
+        }
+        self.custom_ops = {}
 
         self.ffo_proc = None
         self.rc_proc = None
@@ -161,10 +178,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.msg_handler = self.request
         valid = self.authenticate()
         if valid:
-            self.send_msg("Valid credentials")
-            self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
-
             print "Authenticated:        ", self.user
+            self.send_msg("Valid credentials")
+
+            self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
+            self.custom_ops = ast.literal_eval(
+                self.conf_parser.get(self.user, "custom_ops"))
 
             operation = self.receive_msg()
 
@@ -174,21 +193,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg("Invalid credentials")
             return
 
-        operation_function_mapping = {
-            "run_command": self.run_command,
-            "firefox_open": self.firefox_open,
-            "change_dir": self.change_dir,
-            "list_items_in_dir": self.list_items_in_dir,
-            "get_files": self.get_files,
-            "send_files": self.send_files,
-            "create_new_user": self.create_new_user,
-            "update_settings": self.update_settings,
-            "update_server": self.update_server,
-            "restart": self.restart_server,
-            "shutdown": self.shutdown_server
-        }
-        if operation in operation_function_mapping:
-            operation_function_mapping[operation]()
+        print operation
+        print self.custom_ops
+
+        if operation in self.operation_function_mapping:
+            self.operation_function_mapping[operation]()
+        elif operation in self.custom_ops:
+            print "running custom_op"
+            self.run_command(self.custom_ops[operation][0],
+                             self.custom_ops[operation][1])
+            # self.send_msg("Finishing runnig: {}".format(operation))
         else:
             self.request.send("Invalid operation {}".format(operation))
 
@@ -215,9 +229,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         def run_cmd_t():
             self.rc_proc = subprocess.Popen(
                 command_and_args, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, shell=True, cwd=self.curr_dir)
+                stderr=subprocess.PIPE, shell=True)
             communicate_container.append(self.rc_proc.communicate())
-        print command_and_args
+
+        print (command, command_args)
         t = threading.Thread(target=run_cmd_t)
         t.start()
         t.join(timeout=self.command_timeout)
@@ -235,6 +250,51 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg(out)
 
         print "Finished running command"
+
+    def add_custom_operation(self):
+        new_op, new_cmd, new_cmd_args = json.loads(self.receive_msg())
+        print "Adding custom operation:", new_op
+
+        result_msg = ""
+        args_valid = True
+
+        if any([len(new_cmd) == 0, len(new_op) == 0]):
+            result_msg += "Missing argument"
+            args_valid = False
+
+        if new_op in self.operation_function_mapping:
+            result_msg += "Can't replace default operation {}".format(new_op)
+            args_valid = False
+
+        if new_op in self.custom_ops:
+            result_msg += "Operation: {o} already exists.\n  " \
+                         "Replacing command: {c1} with {c2}".format(
+                          o=new_op,
+                          c1=self.custom_ops[new_op], c2=new_cmd)
+
+        if args_valid:
+            if not os.path.isabs(new_cmd):
+                new_cmd = os.path.join(self.curr_dir, new_cmd)
+            if os.path.isfile(new_cmd):
+                self.custom_ops[new_op] = (new_cmd, new_cmd_args)
+                print new_op, "mapped to", (new_cmd, new_cmd_args)
+
+                self.conf_parser.set(self.user, "custom_ops", self.custom_ops)
+                with open(self.config_file, 'ab') as cff:
+                    self.conf_parser.write(cff)
+
+                self.send_msg("success")
+
+            else:
+                result_msg += "Command {} doesn't exist.\n  " \
+                              "Enter full command path otherwise your " \
+                              "current directory will be used to " \
+                              "create it.".format(new_cmd)
+
+                self.send_msg("failed")
+
+            print result_msg
+            self.send_msg(result_msg)
 
     def firefox_open(self):
         link = self.receive_msg()
@@ -390,6 +450,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.conf_parser.set(new_user, "salt", new_salt)
 
         self.conf_parser.set(new_user, "curr_dir", self.default_dir)
+        self.conf_parser.set(new_user, "custom_ops", {})
 
         with open(self.config_file, 'wb') as cff:
             self.conf_parser.write(cff)
