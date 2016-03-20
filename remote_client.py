@@ -34,7 +34,7 @@ class RemoteClient(cliser_shared.CliserSocketCommunication):
 
         self.msg_handler = self.socket
 
-        self.password = "abcdef"
+        self.password = get_config_password()
         self.authenticate()
 
     def init_socket_connection(self):
@@ -248,6 +248,12 @@ def get_custom_ops_config():
     conf_parser.read(config_file)
     custom_ops = ast.literal_eval(conf_parser.get("client", "custom_ops"))
     return custom_ops
+
+
+def get_config_password():
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+    return conf_parser.get("client", "password")
 
 
 def main():
