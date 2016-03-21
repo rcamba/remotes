@@ -44,7 +44,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
     def __init__(self, request, client_address, server_):
         self.conf_parser = ConfigParser.RawConfigParser()
-        self.config_file = "server_data"
+        self.config_file = check_for_config_file()
         self.conf_parser.read(self.config_file)
 
         # self.timeout = 90  # overrides parent
@@ -198,7 +198,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         elif operation in self.custom_ops:
             print "running custom_op"
             self.run_command(self.custom_ops[operation][0],
-                             self.custom_ops[operation][1])
+                             [self.custom_ops[operation][1]])
             # self.send_msg("Finishing runnig: {}".format(operation))
         else:
             self.request.send("Invalid operation {}".format(operation))
@@ -219,13 +219,13 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         # e.g "Program Files (x86)\\Mozilla Firefox\\firefox.exe" ... "a=1&b=1"
         command = os.path.normpath(command)
         command_name = create_batch_file(command, command_args)
-        command_and_args = [command_name]
+        batch_command_name = [command_name]
 
         communicate_container = []
 
         def run_cmd_t():
             self.rc_proc = subprocess.Popen(
-                command_and_args, stdout=subprocess.PIPE,
+                batch_command_name, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, shell=True)
             communicate_container.append(self.rc_proc.communicate())
 
@@ -408,7 +408,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.send_msg("Finished operation send_files")
 
     def create_new_user(self, new_user=None, new_password=None):
-
+        print "Creating new user:", new_user
         if all([new_user is None, new_password is None]):
             try:
                 new_user, new_password = self.receive_msg().split(' ', 1)
@@ -447,7 +447,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.conf_parser.set(new_user, "salt", new_salt)
 
         self.conf_parser.set(new_user, "curr_dir", self.default_dir)
-        self.conf_parser.set(new_user, "custom_ops", {})
+        self.conf_parser.set(new_user, "custom_ops", "{}")
 
         with open(self.config_file, 'wb') as cff:
             self.conf_parser.write(cff)
@@ -472,18 +472,32 @@ def check_for_config_file():
         First user to connect will have them as admin
     """
 
-    config_file = "server_data"
-    if not os.path.isfile(config_file):
-        print "Config file {c} not found. Creating new file {c}.".format(
-            c=config_file)
-        with open(config_file, "wb"):
+    if sys.platform.startswith("win32"):
+        config_storage = os.getenv("APPDATA")
+    elif sys.platform.startswith("linux"):
+        config_storage = os.path.expanduser('~')
+    else:
+        raise OSError("Unsupported OS")
+
+    config_storage_dir = os.path.join(config_storage, ".remotes-data")
+    if not os.path.isdir(config_storage_dir):
+        os.mkdir(config_storage_dir)
+
+    config_file_ = os.path.join(config_storage_dir, "server_data")
+
+    if not os.path.isfile(config_file_):
+        print "Config file {c} not found.\n  Creating new file {c}.".format(
+            c=config_file_)
+        with open(config_file_, "wb"):
             pass
 
         conf_parser = ConfigParser.RawConfigParser()
         conf_parser.add_section("Settings")
         conf_parser.set("Settings", "default_dir", os.getcwd())
-        with open(config_file, 'a') as cff:
+        with open(config_file_, 'a') as cff:
             conf_parser.write(cff)
+
+    return config_file_
 
 
 if __name__ == "__main__":
@@ -492,7 +506,7 @@ if __name__ == "__main__":
 
     check_for_config_file()
     rev = subprocess.Popen(["git", "show", "--pretty=oneline",
-                            "--abbrev-commit", "--quiet", "--maxcount", "1",
+                            "--abbrev-commit", "--quiet", "--max-count", "1",
                             "remote_server.py"],
                            stdout=subprocess.PIPE).communicate()[0].split()
     line_limit = 79
