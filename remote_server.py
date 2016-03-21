@@ -193,9 +193,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             self.send_msg("Invalid credentials")
             return
 
-        print operation
-        print self.custom_ops
-
         if operation in self.operation_function_mapping:
             self.operation_function_mapping[operation]()
         elif operation in self.custom_ops:
@@ -495,7 +492,8 @@ if __name__ == "__main__":
 
     check_for_config_file()
     rev = subprocess.Popen(["git", "show", "--pretty=oneline",
-                            "--abbrev-commit", "--quiet", "HEAD"],
+                            "--abbrev-commit", "--quiet", "--maxcount", "1",
+                            "remote_server.py"],
                            stdout=subprocess.PIPE).communicate()[0].split()
     line_limit = 79
     char_count = 0

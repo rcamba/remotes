@@ -359,6 +359,7 @@ def check_for_config_file():
 
             user - password - abcdef
             user - custom_ops - {}
+            user - target_host - current machine address
     """
 
     if sys.platform.startswith("win32"):
