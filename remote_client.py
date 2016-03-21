@@ -289,20 +289,8 @@ def set_config_password(new_password):
 
 def main():
 
-    rc = None
     # TODO Deal with switches and argv - possibly use argparse
     switch = sys.argv[1].replace("-", "")
-    operation_function_mapping = {
-        "rc": {"function": run_command, "args": (rc,)},
-        "aco": {"function": add_custom_operation, "args": (rc,)},
-        "ffo": {"function": open_in_firefox, "args": (rc,)},
-        "cd": {"function": change_dir, "args": (rc,)},
-        "ls": {"function": list_dir, "args": (rc,)},
-        "gf": {"function": get_files, "args": (rc,)},
-        "sf": {"function": send_files, "args": (rc,)},
-        "sfi": {"function": send_files, "args": (rc, True)},
-        "nu": {"function": create_new_user, "args": (rc,)}
-    }
 
     custom_ops = get_custom_ops()
 
@@ -314,6 +302,19 @@ def main():
 
     else:
         rc = RemoteClient()
+
+        operation_function_mapping = {
+            "rc": {"function": run_command, "args": (rc,)},
+            "aco": {"function": add_custom_operation, "args": (rc,)},
+            "ffo": {"function": open_in_firefox, "args": (rc,)},
+            "cd": {"function": change_dir, "args": (rc,)},
+            "ls": {"function": list_dir, "args": (rc,)},
+            "gf": {"function": get_files, "args": (rc,)},
+            "sf": {"function": send_files, "args": (rc,)},
+            "sfi": {"function": send_files, "args": (rc, True)},
+            "nu": {"function": create_new_user, "args": (rc,)}
+        }
+
         if switch in operation_function_mapping:
             func = operation_function_mapping[switch]["function"]
             func_args = operation_function_mapping[switch]["args"]
