@@ -342,7 +342,6 @@ def main():
         rc.send_msg(operation)
 
     else:
-        exit()
         rc.send_msg("")
 
     print rc.receive_msg()
@@ -376,7 +375,7 @@ def check_for_config_file():
     config_file_ = os.path.join(config_storage_dir, "client_data")
 
     if not os.path.isfile(config_file_):
-        print "Config file {c} not found. Creating new file {c}.".format(
+        print "Config file {c} not found.\n  Creating new file {c}.".format(
             c=config_file_)
         with open(config_file_, "wb"):
             pass
@@ -399,6 +398,5 @@ def check_for_config_file():
 
 
 if __name__ == "__main__":
-
     config_file = check_for_config_file()
     main()
