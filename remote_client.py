@@ -17,7 +17,10 @@ class InvalidCredentialsError(Exception):
 
 class RemoteClient(cliser_shared.CliserSocketCommunication):
 
-    def __init__(self, target_host=socket.gethostbyname("localhost")):
+    def __init__(self, target_host=None):
+        # prevent autocall when get_target_host() is set as default argument
+        if target_host is None:
+            target_host = get_target_host()
 
         self.target_host = target_host
         self.port = 9988
@@ -67,7 +70,7 @@ def run_command(client):
     client.send_msg(command_args)
 
 
-def write_custom_operation_config(custom_ops):
+def set_custom_ops(custom_ops):
     conf_parser = ConfigParser.RawConfigParser()
     conf_parser.read(config_file)
     conf_parser.set("client", "custom_ops", custom_ops)
@@ -94,10 +97,10 @@ def add_custom_operation(client):
     result = client.receive_msg()
 
     if result == "success":
-        custom_ops = get_custom_ops_config()
+        custom_ops = get_custom_ops()
         custom_ops.update({custom_operation:
                           (custom_command, custom_command_args)})
-        write_custom_operation_config(custom_ops)
+        set_custom_ops(custom_ops)
     else:
         print result
 
@@ -243,7 +246,23 @@ def create_new_user(client):
     client.send_msg(msg)
 
 
-def get_custom_ops_config():
+def get_target_host():
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+    target_host = conf_parser.get("client", "target_host")
+    return target_host
+
+
+def set_target_host(new_target_host):
+    conf_parser = ConfigParser.RawConfigParser()
+    conf_parser.read(config_file)
+
+    conf_parser.set("client", "target_host", new_target_host)
+    with open(config_file, 'wb') as cff:
+            conf_parser.write(cff)
+
+
+def get_custom_ops():
     conf_parser = ConfigParser.RawConfigParser()
     conf_parser.read(config_file)
     custom_ops = ast.literal_eval(conf_parser.get("client", "custom_ops"))
@@ -270,7 +289,7 @@ def set_config_password(new_password):
 
 def main():
 
-    rc = RemoteClient(socket.gethostname())
+    rc = RemoteClient()
     # TODO Deal with switches and argv - possibly use argparse
     switch = sys.argv[1].replace("-", "")
     operation_function_mapping = {
@@ -285,7 +304,7 @@ def main():
         "nu": {"function": create_new_user, "args": (rc,)}
     }
 
-    custom_ops = get_custom_ops_config()
+    custom_ops = get_custom_ops()
 
     if switch in operation_function_mapping:
         func = operation_function_mapping[switch]["function"]
@@ -297,8 +316,12 @@ def main():
         operation = switch
         rc.send_msg(operation)
 
-    elif "newpass" in switch:
+    elif "setpass" in switch:
         set_config_password(sys.argv[2])
+        return
+
+    elif "sethost" in switch:
+        set_target_host(sys.argv[2])
         return
 
     elif "usettings" in switch:
@@ -362,7 +385,8 @@ def check_for_config_file():
         conf_parser.add_section(section)
         default_options = {
             "password": "abcdef",
-            "custom_ops": "{}"
+            "custom_ops": "{}",
+            "target_host": socket.gethostbyname(socket.gethostname())
         }
 
         for key in default_options.keys():
