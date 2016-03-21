@@ -289,7 +289,7 @@ def set_config_password(new_password):
 
 def main():
 
-    rc = RemoteClient()
+    rc = None
     # TODO Deal with switches and argv - possibly use argparse
     switch = sys.argv[1].replace("-", "")
     operation_function_mapping = {
@@ -306,46 +306,46 @@ def main():
 
     custom_ops = get_custom_ops()
 
-    if switch in operation_function_mapping:
-        func = operation_function_mapping[switch]["function"]
-        func_args = operation_function_mapping[switch]["args"]
-        # noinspection PyCallingNonCallable
-        func(*func_args)
-
-    elif switch in custom_ops:
-        operation = switch
-        rc.send_msg(operation)
-
-    elif "setpass" in switch:
+    if "setpass" in switch:
         set_config_password(sys.argv[2])
-        return
 
     elif "sethost" in switch:
         set_target_host(sys.argv[2])
-        return
-
-    elif "usettings" in switch:
-        operation = "update_settings"
-        rc.send_msg(operation)
-        rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
-
-    elif "userver" in switch:
-        operation = "update_server"
-        rc.send_msg(operation)
-
-    elif "restart" in switch:
-        operation = "restart"
-        rc.send_msg(operation)
-
-    elif "shutdown" in switch:
-        operation = "shutdown"
-        rc.send_msg(operation)
 
     else:
-        rc.send_msg("")
+        rc = RemoteClient()
+        if switch in operation_function_mapping:
+            func = operation_function_mapping[switch]["function"]
+            func_args = operation_function_mapping[switch]["args"]
+            # noinspection PyCallingNonCallable
+            func(*func_args)
 
-    print rc.receive_msg()
-    rc.close_connection()
+        elif switch in custom_ops:
+            operation = switch
+            rc.send_msg(operation)
+
+        elif "usettings" in switch:
+            operation = "update_settings"
+            rc.send_msg(operation)
+            rc.send_msg(json.dumps((sys.argv[2], sys.argv[3])))
+
+        elif "userver" in switch:
+            operation = "update_server"
+            rc.send_msg(operation)
+
+        elif "restart" in switch:
+            operation = "restart"
+            rc.send_msg(operation)
+
+        elif "shutdown" in switch:
+            operation = "shutdown"
+            rc.send_msg(operation)
+
+        else:
+            rc.send_msg("")
+
+        print rc.receive_msg()
+        rc.close_connection()
 
 
 def check_for_config_file():
