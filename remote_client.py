@@ -369,7 +369,7 @@ def check_for_config_file():
     else:
         raise OSError("Unsupported OS")
 
-    config_storage_dir = os.path.join(config_storage, ".remotes-remote_client")
+    config_storage_dir = os.path.join(config_storage, ".remotes-data")
     if not os.path.isdir(config_storage_dir):
         os.mkdir(config_storage_dir)
 
