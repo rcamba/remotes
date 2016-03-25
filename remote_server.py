@@ -295,7 +295,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
     def firefox_open(self):
         link = self.receive_msg()
-        print "Opening", link
+        print "Opening:", link
 
         if sys.platform.startswith("win32"):
             ff_exe = os.path.join("C:", os.sep,
