@@ -301,6 +301,11 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             ff_exe = os.path.join("C:", os.sep,
                                   "Program Files (x86)",
                                   "Mozilla Firefox", "firefox.exe")
+            if not os.path.isfile(ff_exe):
+                ff_exe = os.path.join("C:", os.sep,
+                                      "Program Files",
+                                      "Mozilla Firefox", "firefox.exe")
+
         elif sys.platform.startswith("linux"):
             ff_exe = os.path.join("usr", "bin", "firefox")
 
