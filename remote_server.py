@@ -154,7 +154,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def update_server(self):
         msg = "Updating server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         t = threading.Thread(target=server.shutdown())
         while t.is_alive():
             t.join(1)
@@ -165,9 +165,9 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                          creationflags=detached_process)
 
     def restart_server(self):
-        msg = "Restarting"
+        msg = "Restarting server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         t = threading.Thread(target=server.shutdown())
         while t.is_alive():
             t.join(1)
@@ -180,11 +180,10 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def shutdown_server(self):
         msg = "Shutting down server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         thread.start_new_thread(server.shutdown, ())
 
     # message handling (send/recv) inherited from CliserSocketCommunication
-
     def handle(self):
 
         self.msg_handler = self.request
@@ -207,13 +206,15 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             return
 
         if operation in self.operation_function_mapping:
+            log_and_print("Running regular op: " + operation)
             self.operation_function_mapping[operation]()
         elif operation in self.custom_ops:
-            log_and_print("running custom_op")
+            log_and_print("Running custom_op: " + operation)
             self.run_command(self.custom_ops[operation][0],
                              [self.custom_ops[operation][1]])
-            # self.send_msg("Finishing runnig: {}".format(operation))
         else:
+            log_and_print("Invalid operation {}".format(operation),
+                          level="debug")
             self.request.send("Invalid operation {}".format(operation))
 
         self.finish()
@@ -242,7 +243,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                 stderr=subprocess.PIPE, shell=True)
             communicate_container.append(self.rc_proc.communicate())
 
-        print (command, command_args)
         t = threading.Thread(target=run_cmd_t)
         t.start()
         t.join(timeout=self.command_timeout)
@@ -265,7 +265,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
     def add_custom_operation(self):
         new_op, new_cmd, new_cmd_args = json.loads(self.receive_msg())
-        print "Adding custom operation:", new_op
+        log_and_print("Adding custom operation:" + new_op)
 
         result_msg = ""
         args_valid = True
@@ -305,12 +305,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
                 self.send_msg("failed")
 
-            print result_msg
+            log_and_print(result_msg)
             self.send_msg(result_msg)
 
     def firefox_open(self):
         link = self.receive_msg()
-        print "Opening:", link
+        log_and_print("Opening: " + link)
 
         if sys.platform.startswith("win32"):
             ff_exe = os.path.join("C:", os.sep,
@@ -511,8 +511,9 @@ def check_for_config_file():
     config_file_ = os.path.join(config_storage_dir_, "server_data")
 
     if not os.path.isfile(config_file_):
-        print "Config file {c} not found.\n  Creating new file {c}.".format(
-            c=config_file_)
+        log_and_print(
+            "Config file {c} not found.\n  Creating new file {c}.".format(
+                c=config_file_))
         with open(config_file_, "wb"):
             pass
 
@@ -551,10 +552,11 @@ if __name__ == "__main__":
             rev[i - 1] += "\n"
             char_count = len(word)
 
-    print " ".join(rev)
+    log_and_print(" ".join(rev))
 
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
-    print "Server running on:", socket.gethostbyname(host)
+    log_and_print("Running on {} ({}) at port: {}".format(
+        host, socket.gethostbyname(host), port))
 
     server.serve_forever()
     server.server_close()
