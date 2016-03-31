@@ -13,6 +13,7 @@ import cliser_shared
 import time
 import sys
 import ast
+import logging
 
 
 class DuplicateUserError(Exception):
@@ -36,7 +37,18 @@ def create_batch_file(command_loc, command_args):
         writer.write("\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str))
         writer.write("\n")
 
+    log_and_print("Creating " + batch_name)
     return batch_name
+
+
+def log_and_print(msg, level="info"):
+    print msg
+    if level == "info":
+        logging.info(msg)
+    elif level == "debug":
+        logging.debug(msg)
+    else:
+        logging.error(msg)
 
 
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
@@ -89,7 +101,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
         user = user.lower()
-        print "Authenticating client:", (user)
+        log_and_print("Authenticating client: " + user)
 
         # if there are no others users make first user connecting as admin...
         if (len(self.conf_parser.sections()) == 1 and
@@ -178,7 +190,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.msg_handler = self.request
         valid = self.authenticate()
         if valid:
-            print "Authenticated:        ", self.user
+            log_and_print("Authenticated:         " + self.user)
             self.send_msg("Valid credentials")
 
             self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
@@ -188,15 +200,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             operation = self.receive_msg()
 
         else:
-            print "Authentication failed:", \
-                socket.gethostbyaddr(self.client_address[0])[0]
+            log_and_print("Authentication failed:" +
+                          socket.gethostbyaddr(self.client_address[0])[0],
+                          level="debug")
             self.send_msg("Invalid credentials")
             return
 
         if operation in self.operation_function_mapping:
             self.operation_function_mapping[operation]()
         elif operation in self.custom_ops:
-            print "running custom_op"
+            log_and_print("running custom_op")
             self.run_command(self.custom_ops[operation][0],
                              [self.custom_ops[operation][1]])
             # self.send_msg("Finishing runnig: {}".format(operation))
@@ -208,11 +221,11 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def run_command(self, command=None, command_args=None):
         if command is None:
             command = self.receive_msg()
-        print "Running command:", command
+        log_and_print("Running command:" + command)
 
         if command_args is None:
             command_args = self.receive_msg().split()
-        print "Command arguments:", command_args
+        log_and_print("Command arguments:" + command_args)
 
         # Workaround for running commands that have spaces and args that
         #   use characters that don't get escaped (e.g &, =) even with '^'
@@ -243,10 +256,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         err = communicate_container[0][1]
         if err is not None and len(err) > 0:
             self.send_msg(err)
+            log_and_print(err, level="debug")
         else:
             self.send_msg(out)
+            log_and_print(out, level="debug")
 
-        print "Finished running command"
+        log_and_print("Finished running command")
 
     def add_custom_operation(self):
         new_op, new_cmd, new_cmd_args = json.loads(self.receive_msg())
@@ -413,7 +428,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         self.send_msg("Finished operation send_files")
 
     def create_new_user(self, new_user=None, new_password=None):
-        print "Creating new user:", new_user
+        log_and_print("Creating new user:" + new_user)
         if all([new_user is None, new_password is None]):
             try:
                 new_user, new_password = self.receive_msg().split(' ', 1)
@@ -459,10 +474,22 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         if all([new_user is None, new_password is None]):
             self.send_msg("Created new user: " + new_user)
+            log_and_print("Created new user: " + new_user)
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
+
+
+def get_config_storage_dir():
+    if sys.platform.startswith("win32"):
+        config_storage = os.getenv("APPDATA")
+    elif sys.platform.startswith("linux"):
+        config_storage = os.path.expanduser('~')
+    else:
+        raise OSError("Unsupported OS")
+
+    return os.path.join(config_storage, ".remotes-data")
 
 
 def check_for_config_file():
@@ -477,18 +504,11 @@ def check_for_config_file():
         First user to connect will have them as admin
     """
 
-    if sys.platform.startswith("win32"):
-        config_storage = os.getenv("APPDATA")
-    elif sys.platform.startswith("linux"):
-        config_storage = os.path.expanduser('~')
-    else:
-        raise OSError("Unsupported OS")
+    config_storage_dir_ = get_config_storage_dir()
+    if not os.path.isdir(config_storage_dir_):
+        os.mkdir(config_storage_dir_)
 
-    config_storage_dir = os.path.join(config_storage, ".remotes-data")
-    if not os.path.isdir(config_storage_dir):
-        os.mkdir(config_storage_dir)
-
-    config_file_ = os.path.join(config_storage_dir, "server_data")
+    config_file_ = os.path.join(config_storage_dir_, "server_data")
 
     if not os.path.isfile(config_file_):
         print "Config file {c} not found.\n  Creating new file {c}.".format(
@@ -514,6 +534,13 @@ if __name__ == "__main__":
                             "--abbrev-commit", "--quiet", "--max-count", "1",
                             "remote_server.py"],
                            stdout=subprocess.PIPE).communicate()[0].split()
+
+    config_storage_dir = get_config_storage_dir()
+    log_file = os.path.join(config_storage_dir, "remotes_server.log")
+    logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                        format="%(asctime)s %(message)s",
+                        datefmt="%d/%m/%Y %I:%M:%S %p")
+
     line_limit = 79
     char_count = 0
 
@@ -531,3 +558,4 @@ if __name__ == "__main__":
 
     server.serve_forever()
     server.server_close()
+    logging.shutdown()
