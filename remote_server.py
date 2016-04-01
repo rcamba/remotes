@@ -13,6 +13,7 @@ import cliser_shared
 import time
 import sys
 import ast
+import logging
 
 
 class DuplicateUserError(Exception):
@@ -36,7 +37,18 @@ def create_batch_file(command_loc, command_args):
         writer.write("\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str))
         writer.write("\n")
 
+    log_and_print("Creating " + batch_name)
     return batch_name
+
+
+def log_and_print(msg, level="info"):
+    print msg
+    if level == "info":
+        logging.info(msg)
+    elif level == "debug":
+        logging.debug(msg)
+    else:
+        logging.error(msg)
 
 
 class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
@@ -89,7 +101,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         msg = self.receive_msg()
         user = socket.gethostbyaddr(self.client_address[0])[0]
         user = user.lower()
-        print "Authenticating client:", (user)
+        log_and_print("Authenticating client: " + user)
 
         # if there are no others users make first user connecting as admin...
         if (len(self.conf_parser.sections()) == 1 and
@@ -110,7 +122,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         return valid
 
     def update_settings(self):
-        print "Updating Settings"
+        log_and_print("Updating server settings")
 
         target_option, new_value = json.loads(self.receive_msg())
         success = False
@@ -121,14 +133,17 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             success = True
 
         if success:
+            log_and_print("Successfully updated server settings")
             self.send_msg("Successfully updated settings")
         else:
-            self.send_msg(
-                "Failed to update settings. "
-                "{} is not a valid option.".format(target_option))
+            fail_msg = "Failed to update settings. " \
+                       "{} is not a valid option.".format(target_option)
+            log_and_print(fail_msg, level="debug")
+            self.send_msg(fail_msg)
 
     def update_user_settings(self, targ_opt, new_value):
-        print "Updating user settings"
+        log_and_print("Updating {opt} in {u}'s settings".format(
+            u=self.user, opt=targ_opt))
 
         success = False
         if self.conf_parser.has_option(self.user, targ_opt):
@@ -137,12 +152,14 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                 self.conf_parser.write(cff)
             success = True
 
+        log_and_print("Successfully updated {u}'s settings")
+
         return success
 
     def update_server(self):
         msg = "Updating server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         t = threading.Thread(target=server.shutdown())
         while t.is_alive():
             t.join(1)
@@ -153,9 +170,9 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                          creationflags=detached_process)
 
     def restart_server(self):
-        msg = "Restarting"
+        msg = "Restarting server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         t = threading.Thread(target=server.shutdown())
         while t.is_alive():
             t.join(1)
@@ -168,17 +185,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def shutdown_server(self):
         msg = "Shutting down server"
         self.send_msg(msg)
-        print msg
+        log_and_print(msg)
         thread.start_new_thread(server.shutdown, ())
 
     # message handling (send/recv) inherited from CliserSocketCommunication
-
     def handle(self):
 
         self.msg_handler = self.request
         valid = self.authenticate()
         if valid:
-            print "Authenticated:        ", self.user
+            log_and_print("Authenticated:         " + self.user)
             self.send_msg("Valid credentials")
 
             self.curr_dir = self.conf_parser.get(self.user, "curr_dir")
@@ -188,19 +204,22 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             operation = self.receive_msg()
 
         else:
-            print "Authentication failed:", \
-                socket.gethostbyaddr(self.client_address[0])[0]
+            log_and_print("Authentication failed:" +
+                          socket.gethostbyaddr(self.client_address[0])[0],
+                          level="debug")
             self.send_msg("Invalid credentials")
             return
 
         if operation in self.operation_function_mapping:
+            log_and_print("Running regular op: " + operation)
             self.operation_function_mapping[operation]()
         elif operation in self.custom_ops:
-            print "running custom_op"
+            log_and_print("Running custom_op: " + operation)
             self.run_command(self.custom_ops[operation][0],
                              [self.custom_ops[operation][1]])
-            # self.send_msg("Finishing runnig: {}".format(operation))
         else:
+            log_and_print("Invalid operation {}".format(operation),
+                          level="debug")
             self.request.send("Invalid operation {}".format(operation))
 
         self.finish()
@@ -208,11 +227,11 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
     def run_command(self, command=None, command_args=None):
         if command is None:
             command = self.receive_msg()
-        print "Running command:", command
+        log_and_print("Running command:" + command)
 
         if command_args is None:
             command_args = self.receive_msg().split()
-        print "Command arguments:", command_args
+        log_and_print("Command arguments:" + command_args)
 
         # Workaround for running commands that have spaces and args that
         #   use characters that don't get escaped (e.g &, =) even with '^'
@@ -229,7 +248,6 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
                 stderr=subprocess.PIPE, shell=True)
             communicate_container.append(self.rc_proc.communicate())
 
-        print (command, command_args)
         t = threading.Thread(target=run_cmd_t)
         t.start()
         t.join(timeout=self.command_timeout)
@@ -243,14 +261,16 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         err = communicate_container[0][1]
         if err is not None and len(err) > 0:
             self.send_msg(err)
+            log_and_print(err, level="debug")
         else:
             self.send_msg(out)
+            log_and_print(out, level="debug")
 
-        print "Finished running command"
+        log_and_print("Finished running command")
 
     def add_custom_operation(self):
         new_op, new_cmd, new_cmd_args = json.loads(self.receive_msg())
-        print "Adding custom operation:", new_op
+        log_and_print("Adding custom operation:" + new_op)
 
         result_msg = ""
         args_valid = True
@@ -290,12 +310,12 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
                 self.send_msg("failed")
 
-            print result_msg
+            log_and_print(result_msg)
             self.send_msg(result_msg)
 
     def firefox_open(self):
         link = self.receive_msg()
-        print "Opening:", link
+        log_and_print("Opening: " + link)
 
         if sys.platform.startswith("win32"):
             ff_exe = os.path.join("C:", os.sep,
@@ -350,7 +370,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         elif choice == "q":
             self.update_user_settings("curr_dir", self.curr_dir)
             msg = "Changed current directory to: {}".format(self.curr_dir)
-            print msg
+            log_and_print(msg)
             self.send_msg(msg)
 
         elif choice == "r":
@@ -382,7 +402,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         return dir_list
 
     def get_files(self):
-        print "Sending file list"
+        log_and_print("Sending file list")
         f_list = self.get_files_list()
 
         self.send_msg(json.dumps(f_list))
@@ -395,25 +415,32 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         for f in f_list:
             cliser_shared.send_file(self, f)
 
-        self.send_msg("Finished operation get_files")
+        finished_msg = "Finished operation get_files"
+        log_and_print(finished_msg)
+        self.send_msg(finished_msg)
 
     def send_files(self):
-        print "Receiving files"
+        log_and_print("Receiving files")
 
         calculated_checksum = cliser_shared.create_file(self)
         expected_checksum = self.receive_msg()
         if calculated_checksum != expected_checksum:  # ask to resend
             self.send_msg("receive_failure")
+            log_and_print("Checksums do not match. Got {} "
+                          "but expected {}".format(calculated_checksum,
+                                                   expected_checksum))
             # TODO alternative to recursion
 
         else:
-            print "Checksums match!"
+            log_and_print("Checksums match!")
             self.send_msg("receive_success")
 
-        self.send_msg("Finished operation send_files")
+        finished_msg = "Finished operation send_files"
+        log_and_print(finished_msg)
+        self.send_msg(finished_msg)
 
     def create_new_user(self, new_user=None, new_password=None):
-        print "Creating new user:", new_user
+        log_and_print("Creating new user:" + new_user)
         if all([new_user is None, new_password is None]):
             try:
                 new_user, new_password = self.receive_msg().split(' ', 1)
@@ -459,10 +486,22 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         if all([new_user is None, new_password is None]):
             self.send_msg("Created new user: " + new_user)
+            log_and_print("Created new user: " + new_user)
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     pass
+
+
+def get_config_storage_dir():
+    if sys.platform.startswith("win32"):
+        config_storage = os.getenv("APPDATA")
+    elif sys.platform.startswith("linux"):
+        config_storage = os.path.expanduser('~')
+    else:
+        raise OSError("Unsupported OS")
+
+    return os.path.join(config_storage, ".remotes-data")
 
 
 def check_for_config_file():
@@ -477,22 +516,16 @@ def check_for_config_file():
         First user to connect will have them as admin
     """
 
-    if sys.platform.startswith("win32"):
-        config_storage = os.getenv("APPDATA")
-    elif sys.platform.startswith("linux"):
-        config_storage = os.path.expanduser('~')
-    else:
-        raise OSError("Unsupported OS")
+    config_storage_dir_ = get_config_storage_dir()
+    if not os.path.isdir(config_storage_dir_):
+        os.mkdir(config_storage_dir_)
 
-    config_storage_dir = os.path.join(config_storage, ".remotes-data")
-    if not os.path.isdir(config_storage_dir):
-        os.mkdir(config_storage_dir)
-
-    config_file_ = os.path.join(config_storage_dir, "server_data")
+    config_file_ = os.path.join(config_storage_dir_, "server_data")
 
     if not os.path.isfile(config_file_):
-        print "Config file {c} not found.\n  Creating new file {c}.".format(
-            c=config_file_)
+        log_and_print(
+            "Config file {c} not found.\n  Creating new file {c}.".format(
+                c=config_file_))
         with open(config_file_, "wb"):
             pass
 
@@ -514,6 +547,13 @@ if __name__ == "__main__":
                             "--abbrev-commit", "--quiet", "--max-count", "1",
                             "remote_server.py"],
                            stdout=subprocess.PIPE).communicate()[0].split()
+
+    config_storage_dir = get_config_storage_dir()
+    log_file = os.path.join(config_storage_dir, "remotes_server.log")
+    logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                        format="%(asctime)s %(message)s",
+                        datefmt="%d/%m/%Y %I:%M:%S %p")
+
     line_limit = 79
     char_count = 0
 
@@ -524,10 +564,12 @@ if __name__ == "__main__":
             rev[i - 1] += "\n"
             char_count = len(word)
 
-    print " ".join(rev)
+    log_and_print(" ".join(rev))
 
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
-    print "Server running on:", socket.gethostbyname(host)
+    log_and_print("Running on {} ({}) at port: {}".format(
+        host, socket.gethostbyname(host), port))
 
     server.serve_forever()
     server.server_close()
+    logging.shutdown()
