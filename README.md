@@ -32,3 +32,9 @@ The output of the command will be returned to the client
 
 ### Retrieve file from remote machine in current server user directory ###
 `remote_client.py -gf` will print a a list of files and prompt for file to retrieve
+
+### Restart server ###
+`remote_client.py -restart`
+
+### Shutdown server ###
+`remote_client.py -shutdown`
