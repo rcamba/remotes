@@ -122,7 +122,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         return valid
 
     def update_settings(self):
-        print "Updating Settings"
+        log_and_print("Updating server settings")
 
         target_option, new_value = json.loads(self.receive_msg())
         success = False
@@ -133,14 +133,17 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             success = True
 
         if success:
+            log_and_print("Successfully updated server settings")
             self.send_msg("Successfully updated settings")
         else:
-            self.send_msg(
-                "Failed to update settings. "
-                "{} is not a valid option.".format(target_option))
+            fail_msg = "Failed to update settings. " \
+                       "{} is not a valid option.".format(target_option)
+            log_and_print(fail_msg, level="debug")
+            self.send_msg(fail_msg)
 
     def update_user_settings(self, targ_opt, new_value):
-        print "Updating user settings"
+        log_and_print("Updating {opt} in {u}'s settings".format(
+            u=self.user, opt=targ_opt))
 
         success = False
         if self.conf_parser.has_option(self.user, targ_opt):
@@ -148,6 +151,8 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
             with open(self.config_file, 'wb') as cff:
                 self.conf_parser.write(cff)
             success = True
+
+        log_and_print("Successfully updated {u}'s settings")
 
         return success
 
@@ -365,7 +370,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         elif choice == "q":
             self.update_user_settings("curr_dir", self.curr_dir)
             msg = "Changed current directory to: {}".format(self.curr_dir)
-            print msg
+            log_and_print(msg)
             self.send_msg(msg)
 
         elif choice == "r":
@@ -397,7 +402,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         return dir_list
 
     def get_files(self):
-        print "Sending file list"
+        log_and_print("Sending file list")
         f_list = self.get_files_list()
 
         self.send_msg(json.dumps(f_list))
@@ -410,22 +415,29 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
         for f in f_list:
             cliser_shared.send_file(self, f)
 
-        self.send_msg("Finished operation get_files")
+        finished_msg = "Finished operation get_files"
+        log_and_print(finished_msg)
+        self.send_msg(finished_msg)
 
     def send_files(self):
-        print "Receiving files"
+        log_and_print("Receiving files")
 
         calculated_checksum = cliser_shared.create_file(self)
         expected_checksum = self.receive_msg()
         if calculated_checksum != expected_checksum:  # ask to resend
             self.send_msg("receive_failure")
+            log_and_print("Checksums do not match. Got {} "
+                          "but expected {}".format(calculated_checksum,
+                                                   expected_checksum))
             # TODO alternative to recursion
 
         else:
-            print "Checksums match!"
+            log_and_print("Checksums match!")
             self.send_msg("receive_success")
 
-        self.send_msg("Finished operation send_files")
+        finished_msg = "Finished operation send_files"
+        log_and_print(finished_msg)
+        self.send_msg(finished_msg)
 
     def create_new_user(self, new_user=None, new_password=None):
         log_and_print("Creating new user:" + new_user)
