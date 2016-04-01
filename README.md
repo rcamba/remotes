@@ -4,7 +4,7 @@ Native Python sockets for running commands remotely from one machine to another.
 Practicing sockets and trying out how no `from` imports feels 
 
 
-## Installation ##  
+## Installation ##
 
 No installation required.   
 Run **remote_server.py** in remote machine and then it's ready to receive commands from **remote_client.py**.
