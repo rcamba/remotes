@@ -34,9 +34,11 @@ def create_batch_file(command_loc, command_args):
                                        ext=extension)
     arg_str = " ".join(command_args)
     with open(batch_name, 'w') as writer:
-        writer.write("\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str))
+        batch_contents = "\"{cl}\" {arg}".format(cl=command_loc, arg=arg_str)
+        writer.write(batch_contents)
         writer.write("\n")
 
+    log_and_print("Batch contents: " + batch_contents)
     log_and_print("Creating " + batch_name)
     return batch_name
 
@@ -231,7 +233,7 @@ class ThreadedTCPRequestHandler(SocketServer.StreamRequestHandler,
 
         if command_args is None:
             command_args = self.receive_msg().split()
-        log_and_print("Command arguments:" + command_args)
+        log_and_print("Command arguments:" + " ".join(command_args))
 
         # Workaround for running commands that have spaces and args that
         #   use characters that don't get escaped (e.g &, =) even with '^'
